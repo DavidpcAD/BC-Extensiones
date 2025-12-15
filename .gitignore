@@ -1,0 +1,26 @@
+# Business Central AL Language
+.alpackages/
+.alcache/
+.snapshots/
+rad.json
+.vscode/launch.json
+
+# Compiled app packages (excepto la versión actual si se desea)
+*.app
+
+# Visual Studio Code
+.vscode/settings.json
+.vscode/tasks.json
+
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+.vs/
