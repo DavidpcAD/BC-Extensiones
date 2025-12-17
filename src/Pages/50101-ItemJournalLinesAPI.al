@@ -78,6 +78,9 @@ page 50101 "GJW Item Journal Lines API"
                 field(shortcutDimension2Code; Rec."Shortcut Dimension 2 Code") { ApplicationArea = All; }
                 field(indirectCost; Rec."Indirect Cost %") { ApplicationArea = All; }
 
+                // ✅ CAMPO PARA REGISTRAR DESDE POWER APPS
+                field(postThisLine; Rec."GJW Post This Line") { ApplicationArea = All; }
+
                 field(shptMethodCode; Rec."Shpt. Method Code") { ApplicationArea = All; }
                 field(reasonCode; Rec."Reason Code") { ApplicationArea = All; }
 
@@ -365,4 +368,28 @@ page 50101 "GJW Item Journal Lines API"
         Rec.Validate("Value Entry Type", Rec."Value Entry Type"::"Direct Cost");
     end;
     */
+
+    // ========== ACCIONES PARA POWER APPS ==========
+
+    [ServiceEnabled]
+    procedure PostBatch(TemplateName: Code[10]; BatchName: Code[20]): Text
+    var
+        ItemJnlLine: Record "Item Journal Line";
+        ItemJnlPostBatch: Codeunit "Item Jnl.-Post Batch";
+        LineCount: Integer;
+    begin
+        // Filtrar líneas del batch
+        ItemJnlLine.SetRange("Journal Template Name", TemplateName);
+        ItemJnlLine.SetRange("Journal Batch Name", BatchName);
+
+        if not ItemJnlLine.FindSet() then
+            Error('No se encontraron líneas en el batch: %1/%2', TemplateName, BatchName);
+
+        LineCount := ItemJnlLine.Count;
+
+        // Registrar todas las líneas del batch
+        ItemJnlPostBatch.Run(ItemJnlLine);
+
+        exit(StrSubstNo('Batch registrado exitosamente: %1 - %2 líneas procesadas', BatchName, LineCount));
+    end;
 }

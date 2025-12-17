@@ -112,6 +112,13 @@ page 50102 "GJW Item Journal Batches API"
                     Caption = 'Setup Executed';
                     Editable = false;
                 }
+
+                // --- ✅ CAMPO PARA REGISTRAR DESDE POWER APPS ---
+                field(triggerPost; Rec."GJW Trigger Post")
+                {
+                    ApplicationArea = All;
+                    Caption = 'Trigger Post';
+                }
             }
         }
     }
