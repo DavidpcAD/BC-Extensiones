@@ -4,27 +4,25 @@ table 50163 "GJW Post Command"
 
     fields
     {
-        field(1; "Batch Name"; Code[20])
+        field(1; "Command Data"; Text[250])
         {
-            Caption = 'Batch Name';
-        }
-        field(2; "Template Name"; Code[10])
-        {
-            Caption = 'Template Name';
+            Caption = 'Command Data';
         }
         field(10; "Lines Posted"; Integer)
         {
             Caption = 'Lines Posted';
+            Editable = false;
         }
         field(11; "Success Message"; Text[250])
         {
             Caption = 'Success Message';
+            Editable = false;
         }
     }
 
     keys
     {
-        key(PK; "Batch Name")
+        key(PK; "Command Data")
         {
             Clustered = true;
         }
