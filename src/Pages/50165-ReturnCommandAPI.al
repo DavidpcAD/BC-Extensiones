@@ -24,14 +24,17 @@ page 50165 "GJW Return Command API"
                 field(jobNo; Rec."Job No.")
                 {
                     ApplicationArea = All;
+                    Editable = true;
                 }
                 field(taskNo; Rec."Task No.")
                 {
                     ApplicationArea = All;
+                    Editable = true;
                 }
                 field(itemNo; Rec."Item No.")
                 {
                     ApplicationArea = All;
+                    Editable = true;
                 }
                 field(variantCode; Rec."Variant Code")
                 {
@@ -49,6 +52,10 @@ page 50165 "GJW Return Command API"
                 {
                     ApplicationArea = All;
                 }
+                field(destinationTaskNo; Rec."Destination Task No.")
+                {
+                    ApplicationArea = All;
+                }
                 field(sourceLocationCode; Rec."Source Location Code")
                 {
                     ApplicationArea = All;
@@ -58,6 +65,10 @@ page 50165 "GJW Return Command API"
                     ApplicationArea = All;
                 }
                 field(postingDate; Rec."Posting Date")
+                {
+                    ApplicationArea = All;
+                }
+                field(itemLedgerEntryNo; Rec."Item Ledger Entry No.")
                 {
                     ApplicationArea = All;
                 }
@@ -71,6 +82,18 @@ page 50165 "GJW Return Command API"
                     ApplicationArea = All;
                     Editable = false;
                 }
+                field(inputJobNo; Rec."Input Job No.")
+                {
+                    ApplicationArea = All;
+                }
+                field(inputTaskNo; Rec."Input Task No.")
+                {
+                    ApplicationArea = All;
+                }
+                field(inputItemNo; Rec."Input Item No.")
+                {
+                    ApplicationArea = All;
+                }
             }
         }
     }
@@ -79,6 +102,18 @@ page 50165 "GJW Return Command API"
     var
         ProcessReturn: Codeunit "GJW Process Material Return";
     begin
+        // Copiar campos Input a campos reales
+        if Rec."Input Job No." <> '' then
+            Rec."Job No." := Rec."Input Job No.";
+        if Rec."Input Task No." <> '' then
+            Rec."Task No." := Rec."Input Task No.";
+        if Rec."Input Item No." <> '' then
+            Rec."Item No." := Rec."Input Item No.";
+
+        // Inferir jobNo del sourceLocationCode si aún está vacío
+        if Rec."Job No." = '' then
+            Rec."Job No." := Rec."Source Location Code";
+
         // Validar datos obligatorios
         if Rec."Job No." = '' then begin
             Rec."Lines Posted" := 0;
@@ -108,11 +143,9 @@ page 50165 "GJW Return Command API"
             Rec."Posting Date" := Today();
 
         // Procesar la devolución
-        if not ProcessReturn.ProcessReturn(Rec) then begin
-            Rec."Lines Posted" := 0;
-            exit(true);
-        end;
+        ProcessReturn.ProcessReturn(Rec);
 
+        // El codeunit ya estableció Success Message y Lines Posted
         exit(true);
     end;
 }

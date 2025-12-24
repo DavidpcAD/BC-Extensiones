@@ -41,6 +41,11 @@ table 50165 "GJW Return Command"
             Caption = 'Destination Job No.';
             DataClassification = CustomerContent;
         }
+        field(12; "Destination Task No."; Code[20])
+        {
+            Caption = 'Destination Task No.';
+            DataClassification = CustomerContent;
+        }
         field(8; "Source Location Code"; Code[10])
         {
             Caption = 'Source Location Code';
@@ -56,6 +61,11 @@ table 50165 "GJW Return Command"
             Caption = 'Posting Date';
             DataClassification = CustomerContent;
         }
+        field(11; "Item Ledger Entry No."; Integer)
+        {
+            Caption = 'Item Ledger Entry No.';
+            DataClassification = CustomerContent;
+        }
         field(20; "Lines Posted"; Integer)
         {
             Caption = 'Lines Posted';
@@ -66,6 +76,22 @@ table 50165 "GJW Return Command"
         {
             Caption = 'Success Message';
             Editable = false;
+            DataClassification = CustomerContent;
+        }
+        // Campos auxiliares para recibir desde Power Apps (no son parte de la clave)
+        field(30; "Input Job No."; Code[20])
+        {
+            Caption = 'Input Job No.';
+            DataClassification = CustomerContent;
+        }
+        field(31; "Input Task No."; Code[20])
+        {
+            Caption = 'Input Task No.';
+            DataClassification = CustomerContent;
+        }
+        field(32; "Input Item No."; Code[20])
+        {
+            Caption = 'Input Item No.';
             DataClassification = CustomerContent;
         }
     }

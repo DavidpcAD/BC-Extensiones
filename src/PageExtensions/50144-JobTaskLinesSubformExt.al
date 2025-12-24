@@ -1,4 +1,4 @@
-pageextension 50132 "GJW Works Decomp Page Ext" extends "GomJob Works Decomposed Line"
+pageextension 50144 "GJW Job Task Lines Subform Ext" extends "Job Task Lines Subform"
 {
     layout
     {
@@ -8,7 +8,7 @@ pageextension 50132 "GJW Works Decomp Page Ext" extends "GomJob Works Decomposed
             {
                 ApplicationArea = All;
                 Caption = 'ID Encargado';
-                ToolTip = 'Identificador del encargado responsable de esta línea';
+                ToolTip = 'ID del encargado de la tarea';
                 Visible = true;
                 Enabled = true;
             }

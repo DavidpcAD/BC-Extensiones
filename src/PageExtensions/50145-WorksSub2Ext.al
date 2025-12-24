@@ -1,4 +1,4 @@
-pageextension 50132 "GJW Works Decomp Page Ext" extends "GomJob Works Decomposed Line"
+pageextension 50145 "GJW Works Sub 2 Ext" extends "GomJob Works Sub 2"
 {
     layout
     {
@@ -8,7 +8,7 @@ pageextension 50132 "GJW Works Decomp Page Ext" extends "GomJob Works Decomposed
             {
                 ApplicationArea = All;
                 Caption = 'ID Encargado';
-                ToolTip = 'Identificador del encargado responsable de esta línea';
+                ToolTip = 'ID del encargado de esta línea';
                 Visible = true;
                 Enabled = true;
             }
