@@ -1,21 +1,47 @@
-# AdelanteAPI - Extensión Business Central
+# AdelanteAPI - Business Central Extension
 
-**Versión:** 1.1.7.6  
+[![Version](https://img.shields.io/badge/version-1.2.0.4-blue.svg)](https://github.com/yourusername/AdelanteAPI)
+[![Business Central](https://img.shields.io/badge/Business%20Central-25.5-green.svg)](https://docs.microsoft.com/en-us/dynamics365/business-central/)
+[![AL](https://img.shields.io/badge/AL-14.0-orange.svg)](https://docs.microsoft.com/en-us/dynamics365/business-central/dev-itpro/developer/devenv-dev-overview)
+
 **Publisher:** Default Publisher  
 **Plataforma:** Business Central 25.0  
+**Runtime:** AL 14.0  
 **Dependencias:** Goom Job Global Localization 25.5.10.0
 
 ---
 
 ## 📋 Descripción del Proyecto
 
-Extensión de Business Central que proporciona:
+Extensión de Business Central que proporciona APIs REST personalizadas para la gestión de proyectos de construcción, control de inventarios, y devoluciones de materiales entre obras.
+
+### Características Principales
+
 - **APIs OData v4** para integración con Power Apps
-- **Automatización** del registro de movimientos en "Almacén de Obra" (GomJob Warehouse Quantity)
+- **Return Commands API** 🆕 - Transferencia de materiales entre obras
+- **Automatización** del registro de movimientos en "Almacén de Obra"
 - **Campos personalizados** para seguimiento de presupuestos y producción
-- **Gestión de obras** con descomposición de líneas y control de encargados
+- **Gestión de obras** con descompuesto y control de encargados
+- **Validación inteligente** con bypass de validaciones automáticas de BC
 
 ---
+
+## 🚀 APIs Destacadas
+
+### 🆕 Return Commands API - Devolución de Materiales
+
+**Endpoint**: `returnCommands (adelante/construction/v1.0)`
+
+Permite transferir materiales entre proyectos de construcción o devolver a almacén general.
+
+**Funcionalidades:**
+- ✅ Validación de disponibilidad de materiales
+- ✅ Creación automática de Job Journal Line (ajuste negativo)
+- ✅ Creación automática de Item Reclassification (transferencia)
+- ✅ Registro automático de ambos diarios
+- ✅ Manejo de errores con mensajes descriptivos
+
+**Ejemplo de uso desde PowerApps:**
 
 ## 🏗️ Estructura del Proyecto
 

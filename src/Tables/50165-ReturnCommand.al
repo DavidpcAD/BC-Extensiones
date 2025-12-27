@@ -4,64 +4,70 @@ table 50165 "GJW Return Command"
 
     fields
     {
-        field(1; "Job No."; Code[20])
+        field(1; "Entry No."; Integer)
+        {
+            Caption = 'Entry No.';
+            DataClassification = CustomerContent;
+            AutoIncrement = true;
+        }
+        field(2; "Job No."; Code[20])
         {
             Caption = 'Job No.';
             DataClassification = CustomerContent;
         }
-        field(2; "Task No."; Code[20])
+        field(3; "Task No."; Code[20])
         {
             Caption = 'Task No.';
             DataClassification = CustomerContent;
         }
-        field(3; "Item No."; Code[20])
+        field(4; "Item No."; Code[20])
         {
             Caption = 'Item No.';
             DataClassification = CustomerContent;
         }
-        field(4; "Variant Code"; Code[10])
+        field(5; "Variant Code"; Code[10])
         {
             Caption = 'Variant Code';
             DataClassification = CustomerContent;
         }
-        field(5; "Quantity"; Decimal)
+        field(6; "Quantity"; Decimal)
         {
             Caption = 'Quantity';
             DataClassification = CustomerContent;
         }
-        field(6; "Return Type"; Option)
+        field(7; "Return Type"; Option)
         {
             Caption = 'Return Type';
             OptionMembers = "To General Warehouse","To Another Job";
             OptionCaption = 'To General Warehouse,To Another Job';
             DataClassification = CustomerContent;
         }
-        field(7; "Destination Job No."; Code[20])
+        field(8; "Destination Job No."; Code[20])
         {
             Caption = 'Destination Job No.';
             DataClassification = CustomerContent;
         }
-        field(12; "Destination Task No."; Code[20])
+        field(9; "Destination Task No."; Code[20])
         {
             Caption = 'Destination Task No.';
             DataClassification = CustomerContent;
         }
-        field(8; "Source Location Code"; Code[10])
+        field(10; "Source Location Code"; Code[10])
         {
             Caption = 'Source Location Code';
             DataClassification = CustomerContent;
         }
-        field(9; "Destination Location Code"; Code[10])
+        field(11; "Destination Location Code"; Code[10])
         {
             Caption = 'Destination Location Code';
             DataClassification = CustomerContent;
         }
-        field(10; "Posting Date"; Date)
+        field(12; "Posting Date"; Date)
         {
             Caption = 'Posting Date';
             DataClassification = CustomerContent;
         }
-        field(11; "Item Ledger Entry No."; Integer)
+        field(13; "Item Ledger Entry No."; Integer)
         {
             Caption = 'Item Ledger Entry No.';
             DataClassification = CustomerContent;
@@ -94,11 +100,21 @@ table 50165 "GJW Return Command"
             Caption = 'Input Item No.';
             DataClassification = CustomerContent;
         }
+        field(33; "Input Destination Job No."; Code[20])
+        {
+            Caption = 'Input Destination Job No.';
+            DataClassification = CustomerContent;
+        }
+        field(34; "Input Destination Task No."; Code[20])
+        {
+            Caption = 'Input Destination Task No.';
+            DataClassification = CustomerContent;
+        }
     }
 
     keys
     {
-        key(PK; "Job No.", "Task No.", "Item No.", "Variant Code")
+        key(PK; "Entry No.")
         {
             Clustered = true;
         }

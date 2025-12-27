@@ -1,0 +1,48 @@
+namespace Adelante.Inventory;
+
+table 50172 ItemAvailLocationBuffer
+{
+    TableType = Temporary;
+
+    fields
+    {
+        field(1; ItemNo; Code[20])
+        {
+            Caption = 'Item No.';
+            DataClassification = ToBeClassified;
+        }
+        field(2; Description; Text[100])
+        {
+            Caption = 'Description';
+            DataClassification = ToBeClassified;
+        }
+        field(3; LocationCode; Code[10])
+        {
+            Caption = 'Location Code';
+            DataClassification = ToBeClassified;
+        }
+        field(4; TotalQuantity; Decimal)
+        {
+            Caption = 'Total Quantity';
+            DataClassification = ToBeClassified;
+        }
+        field(5; RemainingQuantity; Decimal)
+        {
+            Caption = 'Remaining Quantity';
+            DataClassification = ToBeClassified;
+        }
+        field(6; InvoicedQuantity; Decimal)
+        {
+            Caption = 'Invoiced Quantity';
+            DataClassification = ToBeClassified;
+        }
+    }
+
+    keys
+    {
+        key(PK; ItemNo, LocationCode)
+        {
+            Clustered = true;
+        }
+    }
+}
