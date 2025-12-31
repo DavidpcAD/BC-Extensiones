@@ -6,6 +6,27 @@ tableextension 50142 "GJW Job Task Ext" extends "Job Task"
         {
             Caption = 'ID Encargado';
             DataClassification = CustomerContent;
+
+            trigger OnValidate()
+            var
+                Job: Record Job;
+                GomJobWorks: Record "GomJob Works";
+            begin
+                // Sincronizar hacia el Job (proyecto padre)
+                if Job.Get(Rec."Job No.") then begin
+                    Job."ID Encargado" := Rec."ID Encargado";
+                    Job.Modify(true);
+                end;
+
+                // Sincronizar con GomJob Works del mismo proyecto
+                GomJobWorks.Reset();
+                GomJobWorks.SetRange("No.", Rec."Job No.");
+                if GomJobWorks.FindSet(true) then
+                    repeat
+                        GomJobWorks."ID Encargado" := Rec."ID Encargado";
+                        GomJobWorks.Modify(true);
+                    until GomJobWorks.Next() = 0;
+            end;
         }
     }
 }

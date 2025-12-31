@@ -13,35 +13,18 @@
 
 ## 📋 Descripción del Proyecto
 
-Extensión de Business Central que proporciona APIs REST personalizadas para la gestión de proyectos de construcción, control de inventarios, y devoluciones de materiales entre obras.
+Extensión de Business Central que proporciona APIs REST personalizadas para la gestión de proyectos de construcción y control de inventarios, con integración Power Apps mediante Power Automate.
 
 ### Características Principales
 
-- **APIs OData v4** para integración con Power Apps
-- **Return Commands API** 🆕 - Transferencia de materiales entre obras
-- **Automatización** del registro de movimientos en "Almacén de Obra"
+- **APIs OData v4** para integración con Power Apps y Power Automate
+- **Post Command API** para registro automático de movimientos en "Almacén de Obra"
+- **Sincronización automática** del campo "ID Encargado" entre Job, Job Task y Works
+- **Event Subscribers** para automatización completa del flujo de inventario
 - **Campos personalizados** para seguimiento de presupuestos y producción
 - **Gestión de obras** con descompuesto y control de encargados
-- **Validación inteligente** con bypass de validaciones automáticas de BC
 
 ---
-
-## 🚀 APIs Destacadas
-
-### 🆕 Return Commands API - Devolución de Materiales
-
-**Endpoint**: `returnCommands (adelante/construction/v1.0)`
-
-Permite transferir materiales entre proyectos de construcción o devolver a almacén general.
-
-**Funcionalidades:**
-- ✅ Validación de disponibilidad de materiales
-- ✅ Creación automática de Job Journal Line (ajuste negativo)
-- ✅ Creación automática de Item Reclassification (transferencia)
-- ✅ Registro automático de ambos diarios
-- ✅ Manejo de errores con mensajes descriptivos
-
-**Ejemplo de uso desde PowerApps:**
 
 ## 🏗️ Estructura del Proyecto
 
@@ -101,6 +84,120 @@ src/
 │
 └── 🔐 Permissions/        (1 archivo)
     └── 50100-AdelanteAPIPerm.al
+```
+
+---
+
+## 🚀 Cambios Recientes v1.2.0.4
+
+### ✅ Nuevas Funcionalidades
+
+1. **Post Command API** (`/postCommands`)
+   - Endpoint para posting automático desde Power Apps
+   - Validación de cantidad > 0 y número de ítem
+   - Retorna estado detallado (linesPosted, duration, errorDetails)
+   - Primary key: Command ID (Guid) para evitar conflicto con SystemId
+
+2. **Sincronización ID Encargado**
+   - Sync automático bidireccional entre Job ↔ Job Task ↔ GomJob Works
+   - OnValidate triggers en las 3 tablas
+   - Mantiene consistencia de datos sin intervención manual
+
+3. **GJW Posting Status Enum**
+   - NotStarted / InProgress / Completed / Failed
+   - Usado por Post Command API para tracking de estado
+
+### 🔄 Modificaciones
+
+1. **Post Command Table (50163)**
+   - Cambio de primary key de "Command Data" a "Command ID" (Guid)
+   - Mejora en gestión de errores con Codeunit.Run()
+   - Validación previa al posting
+
+2. **ItemJnlPostHandler (50157)**
+   - Preservado y optimizado
+   - Core del flujo automático diario → almacén
+
+3. **Launch.json**
+   - `schemaUpdateMode`: "Recreate" → "Synchronize"
+   - Preserva datos durante desarrollo con F5
+
+### ❌ Funcionalidades Eliminadas
+
+1. **Return Command API** (50165-ReturnCommandAPI.al)
+2. **Return Command Table** (50165-ReturnCommand.al)
+3. **Process Material Return Codeunit** (50159-ProcessMaterialReturn.al)
+
+---
+
+## 🔌 Integración Power Apps
+
+### Método Recomendado: Power Automate
+
+**Ventajas:**
+- ⚡ **Rápido**: Solo 4 operaciones vs 500+
+- 🔐 **Seguro**: OAuth centralizado en el flujo
+- 🧹 **Limpio**: Power Apps solo envía parámetro batch name
+
+**Configuración del Flujo:**
+
+1. **Trigger**: PowerApps (V2)
+   ```
+   Input: batchName (String)
+   ```
+
+2. **HTTP OAuth**: Obtener token Azure AD
+   ```
+   Tenant: 27272476-d569-411c-ab78-6d3f3b7596e5
+   Audience: https://api.businesscentral.dynamics.com
+   ```
+
+3. **HTTP POST**: Llamar Post Command API
+   ```json
+   URL: https://api.businesscentral.dynamics.com/v2.0/{tenantId}/{environment}/api/adelante/construction/v1.0/companies({companyId})/postCommands
+   
+   Headers:
+     Authorization: Bearer @{variables('varToken')}
+     Content-Type: application/json
+   
+   Body:
+   {
+     "commandData": "@{triggerBody()['batchName']}"
+   }
+   ```
+
+4. **Respond to PowerApp**: Retornar resultado
+
+**Código Power Apps:**
+```powerappsfl
+// Llamar al flujo
+Set(
+    _flowResult;
+    'Registrar en Almacen Obra'.Run(_encargadoBOL)
+);;
+
+Notify(_flowResult.successMessage; NotificationType.Success)
+```
+
+### Método Alternativo: API Directa
+
+Solo usar si Power Automate no está disponible:
+
+```powerappsfl
+Set(
+    _postResult;
+    Patch(
+        'postCommands (adelante/construction/v1.0)';
+        Defaults('postCommands (adelante/construction/v1.0)');
+        {commandData: _encargadoBOL}
+    )
+);;
+
+If(
+    _postResult.postingStatus = "Completed";
+    Notify("✅ " & _postResult.successMessage; NotificationType.Success);
+    Notify("❌ " & _postResult.errorDetails; NotificationType.Error)
+)
 ```
 
 ---
@@ -361,11 +458,19 @@ ForAll(
 
 ## 🐛 Solución de Problemas
 
+### Error: "You have insufficient quantity on inventory"
+**Causa:** Business Central no permite inventario negativo por defecto
+**Solución:**
+1. Buscar "Ubicaciones" (Locations) en BC
+2. Abrir ubicación **ALM-GRAL**
+3. Activar "Permitir inventario negativo"
+4. Guardar cambios
+
 ### Error: "Line No. already exists"
 **Solución:** Codeunits 50155/50156 deberían prevenir esto. Verificar que están en permisos.
 
 ### Error: "Cannot convert NavJsonValue to NavText"
-**Solución:** Ya corregido en v1.1.7.6 con validaciones `IsNull()`.
+**Solución:** Ya corregido en versiones anteriores con validaciones `IsNull()`.
 
 ### Campo "Task No." no visible en diario
 **Solución:** 
@@ -377,6 +482,26 @@ ForAll(
 1. Verificar que "Task No." no está vacío
 2. Verificar que "Global Dimension 1" tiene Job No.
 3. Verificar permisos del codeunit 50157
+4. Confirmar que el posting fue exitoso (sin errores de inventario)
+
+### Power Apps: Demasiado lento (500+ operaciones)
+**Causa:** Procesando colección completa en lugar de filtrada
+**Solución:**
+```powerappsfl
+// ❌ MAL - Procesa 491 items
+ForAll(colBoletaDET; ...)
+
+// ✅ BIEN - Solo items con cantidad > 0
+ClearCollect(colEnviables; Filter(colBoletaDET; CantidadEntregable > 0));;
+ForAll(colEnviables; ...)
+```
+
+### Power Automate: Flujo no se ejecuta desde Power Apps
+**Verificar:**
+1. Flujo agregado como origen de datos en Power Apps
+2. Nombre correcto con comillas simples: `'Registrar en Almacen Obra'.Run(...)`
+3. Permisos de ejecución del flujo
+4. Revisar historial de ejecución del flujo para detalles de errores
 
 ---
 
@@ -386,18 +511,35 @@ ForAll(
 - **Tables:** 50100-50199
 - **Pages:** 50100-50199
 - **Codeunits:** 50100-50199
-- **PageExtensions:** 50131-50134
-- **TableExtensions:** 50111, 50129-50130, 50133, 50135
+- **PageExtensions:** 50131-50142
+- **TableExtensions:** 50111, 50129-50142
+- **Enums:** 50140
 
-### Grupos API:
+### Grupos API (OData v4):
 - `construction` - APIs de obras y presupuestos
 - `inventory` - APIs de inventario y diarios
 - `project` - APIs de proyectos y tareas
 
-### Versiones:
-- **Actual:** 1.1.7.6
-- **Plataforma BC:** 25.0.0.0
-- **Runtime:** 14.0
+### Endpoints Principales:
+
+**Base URL:**
+```
+https://api.businesscentral.dynamics.com/v2.0/{tenantId}/{environment}/api/adelante/{group}/v1.0/companies({companyId})/
+```
+
+**Ejemplos:**
+- `/postCommands` - Posting automático desde Power Apps
+- `/itemJournalLines` - Líneas de diario de inventario
+- `/works` - Obras/presupuestos
+- `/workLines` - Líneas de presupuesto
+- `/jobTasks` - Tareas de proyecto
+
+### Configuración Ambiente:
+- **Tenant ID**: 27272476-d569-411c-ab78-6d3f3b7596e5
+- **Environment**: SBX_PRODCOPY_25_5
+- **Company**: ADELANTE
+- **Location**: ALM-GRAL
+- **Journal Template**: TRANSFEREN
 
 ---
 
@@ -417,29 +559,27 @@ ForAll(
 
 ## 📚 Historial de Versiones
 
-### v1.1.7.6 (Actual)
-- ✅ Automatización completa diario → almacén obra
-- ✅ Campo "ID Encargado" en APIs
-- ✅ Estructura profesional con carpetas
-- ✅ Nombres de archivo coinciden con IDs de objeto
+### v1.2.0.4 (Actual - 31 Diciembre 2025)
+- ✅ Post Command API con validaciones completas
+- ✅ Sincronización ID Encargado (Job ↔ Job Task ↔ Works)
+- ✅ Event Subscriber automatización diario → almacén
+- ✅ GJW Posting Status Enum
+- ✅ Launch.json Synchronize mode (preserva datos)
+- ❌ Eliminado Return Command API y módulos relacionados
 - ✅ 0 errores de compilación
 
 ### Versiones anteriores
-- v1.1.7.5: Codeunit 50157 con Event Subscribers
-- v1.1.7.4: Campo Task No. en Item Journal Line
-- v1.1.7.x: Corrección de JSON nulls en bulk
-- v1.1.6.x: AutoNo codeunits con detección de colisiones
-- v1.1.x: Campo ID Encargado en presupuestos
+- v1.1.7.x: Automatización completa diario → almacén obra
+- v1.1.6.x: Campo "ID Encargado" en APIs
+- v1.1.x: Corrección de JSON nulls en bulk
+- v1.0.x: AutoNo codeunits con detección de colisiones
 
 ---
 
 ## 👥 Equipo y Soporte
 
-**Desarrollador:** Daniel  
 **Organización:** Adelante Desarrollos  
-**Fecha:** Diciembre 2025
-
-**Contacto:** [Tu información de contacto]
+**Última actualización:** 31 de Diciembre de 2025
 
 ---
 
@@ -448,31 +588,32 @@ ForAll(
 - [Microsoft BC Developer Docs](https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/)
 - [OData v4 Specification](https://www.odata.org/documentation/)
 - [AL Language Extension](https://marketplace.visualstudio.com/items?itemName=ms-dynamics-smb.al)
+- [Power Automate Connectors](https://learn.microsoft.com/en-us/connectors/dynamicssmbsaas/)
 
 ---
 
 ## 🎯 Próximos Pasos Recomendados
 
-1. **Testing en Sandbox:**
-   - Probar escenarios de registro con Task No.
+1. **Configurar Power Automate:**
+   - Crear flujo "Registrar en Almacen Obra"
+   - Configurar OAuth con Azure AD
+   - Probar endpoint /postCommands
+
+2. **Testing en Sandbox:**
+   - Probar escenarios con items que tienen stock
    - Validar creación automática en Warehouse Quantity
-   - Probar reversiones (cantidades negativas)
+   - Probar filtrado de colEnviables en Power Apps
 
-2. **Validar APIs desde Power Apps:**
-   - Leer/escribir workLines
-   - Leer/escribir workDecomposedLines
-   - Verificar campo idEncargado
-
-3. **Monitoreo:**
-   - Revisar Job Queue Entries si hay errores
-   - Validar performance con > 100 registros
-   - Confirmar no hay duplicados en Warehouse Quantity
+3. **Optimización Power Apps:**
+   - Verificar que usa colEnviables en lugar de colBoletaDET
+   - Confirmar solo 4-5 operaciones por envío
+   - Monitorear tiempos de respuesta
 
 4. **Despliegue a Producción:**
    - Backup de BD antes de instalar
    - Instalar en horario de baja actividad
-   - Capacitar usuarios en uso de "Task No."
+   - Capacitar usuarios en flujo simplificado
 
 ---
 
-**✅ Proyecto completo, estructurado y listo para producción.**
+**✅ Proyecto completo, optimizado y listo para producción.**
