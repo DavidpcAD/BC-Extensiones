@@ -1,6 +1,7 @@
 namespace Adelante.Inventory;
 
 using Microsoft.Inventory.Ledger;
+using Microsoft.Inventory.Item;
 
 page 50104 "Item Avail by Location API"
 {
@@ -47,6 +48,10 @@ page 50104 "Item Avail by Location API"
                 {
                     Caption = 'Invoiced Quantity';
                 }
+                field(unitOfMeasure; Rec.UnitOfMeasure)
+                {
+                    Caption = 'Unit of Measure';
+                }
             }
         }
     }
@@ -59,6 +64,7 @@ page 50104 "Item Avail by Location API"
     local procedure PopulateBuffer()
     var
         ItemLedgerEntry: Record "Item Ledger Entry";
+        Item: Record Item;
     begin
         Rec.DeleteAll();
 
@@ -76,6 +82,11 @@ page 50104 "Item Avail by Location API"
                     Rec.ItemNo := ItemLedgerEntry."Item No.";
                     Rec.Description := ItemLedgerEntry.Description;
                     Rec.LocationCode := ItemLedgerEntry."Location Code";
+
+                    // Obtener unidad de medida del artículo
+                    if Item.Get(ItemLedgerEntry."Item No.") then
+                        Rec.UnitOfMeasure := Item."Base Unit of Measure";
+
                     Rec.TotalQuantity := 0;
                     Rec.RemainingQuantity := 0;
                     Rec.InvoicedQuantity := 0;

@@ -36,6 +36,11 @@ table 50172 ItemAvailLocationBuffer
             Caption = 'Invoiced Quantity';
             DataClassification = ToBeClassified;
         }
+        field(7; UnitOfMeasure; Code[10])
+        {
+            Caption = 'Unit of Measure';
+            DataClassification = ToBeClassified;
+        }
     }
 
     keys

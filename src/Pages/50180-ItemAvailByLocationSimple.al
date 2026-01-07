@@ -45,6 +45,10 @@ page 50180 "Item Avail. by Location Simple"
                 {
                     Caption = 'Inventory';
                 }
+                field(unitOfMeasure; UnitOfMeasure)
+                {
+                    Caption = 'Unit of Measure';
+                }
             }
         }
     }
@@ -58,11 +62,13 @@ page 50180 "Item Avail. by Location Simple"
     begin
         GetLocationName();
         GetItemDescription();
+        GetUnitOfMeasure();
     end;
 
     var
         LocationName: Text[100];
         ItemDescription: Text[100];
+        UnitOfMeasure: Code[10];
 
     local procedure PopulateBuffer()
     var
@@ -113,6 +119,15 @@ page 50180 "Item Avail. by Location Simple"
         ItemDescription := '';
         if Item.Get(Rec.ItemNo) then
             ItemDescription := Item.Description;
+    end;
+
+    local procedure GetUnitOfMeasure()
+    var
+        Item: Record Item;
+    begin
+        UnitOfMeasure := '';
+        if Item.Get(Rec.ItemNo) then
+            UnitOfMeasure := Item."Base Unit of Measure";
     end;
 
 

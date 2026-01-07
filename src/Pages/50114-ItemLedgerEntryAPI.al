@@ -27,6 +27,7 @@ page 50114 "GJW Item Ledger Entry API"
                 field(entryType; Rec."Entry Type") { }
                 field(documentType; Rec."Document Type") { }
                 field(documentNo; Rec."Document No.") { }
+                field(postingDate; Rec."Posting Date") { }
                 field(sourceNo; Rec."Source No.") { }
 
                 field(vendorName; VendorName) { Caption = 'Vendor Name'; }
@@ -38,6 +39,8 @@ page 50114 "GJW Item Ledger Entry API"
                 field(locationCode; Rec."Location Code") { }
 
                 field(stock; Rec."Remaining Quantity") { Caption = 'Stock'; }
+                field(open; Rec.Open) { }
+                field(costAmountActual; Rec."Cost Amount (Actual)") { }
                 field(gomJobCostPerUnit; Rec."GomJob Cost per Unit") { }
                 field(gomJobWarehouseQuantity; Rec."GomJob Warehouse Quantity") { }
             }

@@ -69,6 +69,10 @@ page 50150 "Adelante Job Journal Line API"
                 {
                     ApplicationArea = All;
                 }
+                field(entryType; Rec."Entry Type")
+                {
+                    ApplicationArea = All;
+                }
                 field(no; Rec."No.")
                 {
                     ApplicationArea = All;
@@ -106,6 +110,11 @@ page 50150 "Adelante Job Journal Line API"
                     ApplicationArea = All;
                 }
                 field(appliesToEntry; Rec."Applies-to Entry")
+                {
+                    ApplicationArea = All;
+                }
+
+                field(appliesFromEntry; Rec."Applies-from Entry")
                 {
                     ApplicationArea = All;
                 }
