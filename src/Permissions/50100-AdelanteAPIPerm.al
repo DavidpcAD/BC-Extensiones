@@ -53,6 +53,7 @@ permissionset 50100 "Adelante API RIMD"
         page "GJW WorksDecomp Bulk API" = X,
         page "GJW WorksDecomp Bulk Single" = X,
         page "GJW Bulk Operations API" = X,
+        page "GJW WorkLines Bulk Singleton" = X,
         page "Job Task API" = X,
         page "GJW Job API" = X,
         page "Job Journal Batch API" = X,
@@ -63,6 +64,9 @@ permissionset 50100 "Adelante API RIMD"
         // CODEUNITS (Execute)
         codeunit "GJW WorksDecomp Bulk" = X,
         codeunit "GJW WorksDecomp Bulk Unbound" = X,
+        codeunit "GJW WorkLines Bulk" = X,
+        codeunit "GJW WorkLines Bulk Unbound" = X,
+        codeunit "GJW Proj Material Transfer" = X,
         codeunit "GJW Init ItemAvailBuffer API" = X,
         codeunit JobJnlManagement = X,
         codeunit "GJW Job Journal Line ValPre" = X,

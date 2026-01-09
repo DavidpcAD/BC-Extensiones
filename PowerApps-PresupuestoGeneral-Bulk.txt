@@ -1,0 +1,134 @@
+// ========================================
+// ENVÍO BULK DE PRESUPUESTO GENERAL
+// Reemplaza el ForAll línea por línea
+// ========================================
+
+// 0) Obra y versión base
+Set(_workNo; _obraD365.'No.');;
+Set(_verBase; Trim(_obraD365.'Filter Version Code'));;
+
+// 1) Calcular la nueva versión
+If(
+    !IsBlank(_verBase);
+    With(
+        {
+            _n: Coalesce( Value( Substitute(_verBase; "REESTUDIO"; "" ) ); 0 ) + 1
+        };
+        Set(_versionActual; "REESTUDIO" & Text(_n))
+    );
+    Set(_versionActual; "REESTUDIO1")
+);;
+
+// 2) ARMAR JSON con todas las líneas
+Set(
+    _lineasJSON;
+    Concat(
+        ForAll(
+            colPresupuesto As r;
+            Concatenate(
+                "{";
+                    """worksNo"":"""; r.worksNo; """;";
+                    """versionCode"":"""; _versionActual; """;";  // Nueva versión
+                    """lineNo"":"; Text(r.lineNo); ";";
+                    """lineType"":"""; r.lineType; """;";
+                    """taskType"":"""; r.taskType; """;";
+                    """taskNo"":"""; r.taskNo; """;";
+                    """description"":"""; Substitute(r.description; """"; "\"""); """;";  // Escapar comillas
+                    """quantity"":"; Text(1); ";";  // Siempre 1
+                    """unitAmount"":"; Text(r.lineAmount; "[$-en-US]0.00"); ";";
+                    """lineAmount"":"; Text(r.lineAmount; "[$-en-US]0.00"); ";";
+                    """quantityToProduce"":"; Text(r.quantityToProduce; "[$-en-US]0.00"); ";";
+                    """unitOfMeasure"":"""; r.unitOfMeasure; """;";
+                    """codeOrder"":"""; r.codeOrder; """;";
+                    """idEncargado"":"; Text(r.idEncargado); ";";
+                    """reStudy"":true";  // Nueva versión = reestudio
+                "}"
+            )
+        );
+        ","
+    )
+);;
+
+// 3) ENVIAR TODO DE UNA VEZ al singleton
+Patch(
+    'workLineBulks (adelante/construction/v1.0)';
+    First('workLineBulks (adelante/construction/v1.0)');  // Siempre usa el ID 1
+    {
+        'Works No.': _workNo;
+        'Lineas JSON': "[" & _lineasJSON & "]";  // Array JSON completo
+        Ejecutar: true
+    }
+);;
+
+// 4) Registrar la versión en Works Version
+Patch(
+    'workVersions (adelante/construction/v1.0)';
+    Defaults('workVersions (adelante/construction/v1.0)');
+    {
+        'Work No.': _workNo;
+        'Version Code': _versionActual;
+        'Creation Date Time': DateAdd(Now(); -TimeZoneOffset(Now()); TimeUnit.Minutes);
+        'Re-Study or Basic': true
+    }
+);;
+
+// 5) Refrescar y leer totales
+Select(ButtonCanvas4);;
+Set(_workCalc; LookUp('works (adelante/construction/v1.0)'; no = _workNo));;
+
+// 6) Actualizar UI
+UpdateContext({
+    uiVersion: _versionActual;
+    uiSales: _workCalc.salesLineAmount;
+    uiCost: _workCalc.costLineAmount;
+    uiIndirect: _workCalc.indirectCostLineAmount;
+    uiResult: _workCalc.result
+});;
+
+// 7) Si no tiene avance, crear base de producción
+If(
+    IsBlank(
+        LookUp(
+            'productionLines (adelante/construction/v1.0)_1';
+            'Work No.' = _obraD365.'No.'
+        )
+    );
+    ClearCollect(
+        colPrimerAvance;
+        ShowColumns(
+            Filter(
+                'workLines (adelante/construction/v1.0)';
+                'Work No.' = _obraD365.'No.';
+                'Line Type' <> "Cost"
+            );
+            'Work No.'; 'Task No.'; 'Task Type'; Description; 'Unit of Measure'; 'Unit Amount'
+        )
+    );;
+    ForAll(
+        colPrimerAvance As p;
+        Patch(
+            'productionLines (adelante/construction/v1.0)_1';
+            Defaults('productionLines (adelante/construction/v1.0)_1');
+            {
+                'Work No.': p.worksNo;
+                'Task No.': p.taskNo;
+                'Task Type': p.taskType;
+                Description: p.description;
+                'Unit of Measure': p.unitOfMeasure;
+                'Unit Price': p.unitAmount;
+                Quantity: 0
+            }
+        )
+    )
+);;
+
+Notify("✅Nueva versión creada BULK. Histórico preservado."; NotificationType.Success);;
+Set(_Edit; false);;
+
+// ========================================
+// NOTAS:
+// - 1 solo request vs 100+ requests
+// - Mucho más rápido
+// - Menos carga en la red
+// - Resultado en el campo 'resultado' del singleton
+// ========================================
