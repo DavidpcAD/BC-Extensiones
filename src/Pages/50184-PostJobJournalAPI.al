@@ -3,11 +3,14 @@ page 50184 "GJW Post Job Journal API"
     PageType = API;
     Caption = 'Post Job Journal API';
     APIPublisher = 'adelante';
-    APIGroup = 'returns';
+    APIGroup = 'project';
     APIVersion = 'v1.0';
     EntityName = 'postJobJournal';
     EntitySetName = 'postJobJournals';
-    SourceTable = "GJW Post Command";
+
+
+
+    SourceTable = "GJW Post Job Journal Cmd";
     SourceTableTemporary = true;
     DelayedInsert = true;
     InsertAllowed = true;
@@ -25,10 +28,50 @@ page 50184 "GJW Post Job Journal API"
                     ApplicationArea = All;
                     Caption = 'Command ID';
                 }
-                field(commandData; Rec."Command Data")
+                field(batchName; Rec."Batch Name")
                 {
                     ApplicationArea = All;
                     Caption = 'Batch Name';
+                }
+                field(itemNo; Rec."No.")
+                {
+                    ApplicationArea = All;
+                    Caption = 'Item No.';
+                }
+                field(variantCode; Rec."Variant Code")
+                {
+                    ApplicationArea = All;
+                    Caption = 'Variant Code';
+                }
+                field(quantity; Rec.Quantity)
+                {
+                    ApplicationArea = All;
+                    Caption = 'Quantity';
+                }
+                field(documentNo; Rec."Document No.")
+                {
+                    ApplicationArea = All;
+                    Caption = 'Document No.';
+                }
+                field(description; Rec.Description)
+                {
+                    ApplicationArea = All;
+                    Caption = 'Description';
+                }
+                field(jobNo; Rec."Job No.")
+                {
+                    ApplicationArea = All;
+                    Caption = 'Job No.';
+                }
+                field(jobTaskNo; Rec."Job Task No.")
+                {
+                    ApplicationArea = All;
+                    Caption = 'Job Task No.';
+                }
+                field(unitCost; Rec."Unit Cost")
+                {
+                    ApplicationArea = All;
+                    Caption = 'Unit Cost';
                 }
                 field(linesPosted; Rec."Lines Posted")
                 {
@@ -49,111 +92,40 @@ page 50184 "GJW Post Job Journal API"
     trigger OnInsertRecord(BelowxRec: Boolean): Boolean
     var
         JobJnlLine: Record "Job Journal Line";
-        JobJnlPostBatch: Codeunit "Job Jnl.-Post Batch";
-        Job: Record Job;
-        JobTask: Record "Job Task";
-        Item: Record Item;
-        Location: Record Location;
+        JobJnlPostBatch: Codeunit "Job Jnl.-Post";
         LineCount: Integer;
-        BatchName: Code[20];
-        TemplateName: Code[10];
-        ValidationErrors: Text[1000];
     begin
-        // Validate batch name received
-        if Rec."Command Data" = '' then begin
-            Rec."Lines Posted" := 0;
-            Rec."Success Message" := 'ERROR: Batch name is required in Command Data.';
-            exit(true);
-        end;
-
-        BatchName := CopyStr(Rec."Command Data", 1, 20);
-        TemplateName := 'PROJECT';
-
-        // Get lines from batch
+        // LEER desde DB con aislamiento correcto
+        JobJnlLine.ReadIsolation := JobJnlLine.ReadIsolation::ReadUncommitted;
         JobJnlLine.Reset();
-        JobJnlLine.SetRange("Journal Template Name", TemplateName);
-        JobJnlLine.SetRange("Journal Batch Name", BatchName);
+        JobJnlLine.SetRange("Journal Template Name", 'PROJECT');
+        JobJnlLine.SetRange("Journal Batch Name", 'DEFAULT');
 
+        // Verificar si existen líneas
         if not JobJnlLine.FindSet() then begin
-            Rec."Lines Posted" := 0;
-            Rec."Success Message" := StrSubstNo('ERROR: No lines found in Template: %1, Batch: %2', TemplateName, BatchName);
+            // Intentar sin filtros para debug
+            JobJnlLine.Reset();
+            JobJnlLine.ReadIsolation := JobJnlLine.ReadIsolation::ReadUncommitted;
+            Rec."Success Message" := 'ERROR: No hay líneas en PROJECT/DEFAULT. Total en tabla: ' + Format(JobJnlLine.Count);
             exit(true);
         end;
 
-        // VALIDACIONES PREVIAS - Verificar PRIMERA línea
-        ValidationErrors := '';
+        // Contar líneas
+        repeat
+            LineCount += 1;
+        until JobJnlLine.Next() = 0;
 
-        if JobJnlLine."Job No." = '' then
-            ValidationErrors += 'Job No. is blank. ';
-
-        if JobJnlLine."Job Task No." = '' then
-            ValidationErrors += 'Job Task No. is blank. ';
-
-        if not Job.Get(JobJnlLine."Job No.") then
-            ValidationErrors += 'Job ' + JobJnlLine."Job No." + ' does not exist. ';
-
-        if not JobTask.Get(JobJnlLine."Job No.", JobJnlLine."Job Task No.") then
-            ValidationErrors += 'Job Task ' + JobJnlLine."Job Task No." + ' does not exist. ';
-
-        if JobJnlLine."No." = '' then
-            ValidationErrors += 'Item No. is blank. ';
-
-        if (JobJnlLine."No." <> '') and (not Item.Get(JobJnlLine."No.")) then
-            ValidationErrors += 'Item ' + JobJnlLine."No." + ' does not exist. ';
-
-        if JobJnlLine."Location Code" <> '' then begin
-            if not Location.Get(JobJnlLine."Location Code") then
-                ValidationErrors += 'Location ' + JobJnlLine."Location Code" + ' does not exist. ';
-        end;
-
-        if JobJnlLine."Posting Date" = 0D then
-            ValidationErrors += 'Posting Date is blank. ';
-
-        if JobJnlLine."Document Date" = 0D then
-            ValidationErrors += 'Document Date is blank. ';
-
-        if JobJnlLine."Document No." = '' then
-            ValidationErrors += 'Document No. is blank. ';
-
-        // Si hay errores de validación, retornar
-        if ValidationErrors <> '' then begin
-            Rec."Lines Posted" := 0;
-            Rec."Success Message" := CopyStr('VALIDATION ERROR: ' + ValidationErrors, 1, 250);
-            exit(true);
-        end;
-
-        // Count lines BEFORE posting
-        LineCount := JobJnlLine.Count();
-
-        // Execute posting with error handling
-        Commit();
-        ClearLastError();
-
-        if not JobJnlPostBatch.Run(JobJnlLine) then begin
-            Rec."Lines Posted" := 0;
-            if GetLastErrorText() <> '' then
-                Rec."Success Message" := CopyStr('ERROR BC: ' + GetLastErrorText(), 1, 250)
-            else
-                Rec."Success Message" := 'ERROR: Posting failed. Check Job Journal for validation errors.';
-            ClearLastError();
-            exit(true);
-        end;
-
-        // Verify posting was successful
+        // REGISTRAR
         JobJnlLine.Reset();
-        JobJnlLine.SetRange("Journal Template Name", TemplateName);
-        JobJnlLine.SetRange("Journal Batch Name", BatchName);
-
+        JobJnlLine.SetRange("Journal Template Name", 'PROJECT');
+        JobJnlLine.SetRange("Journal Batch Name", 'DEFAULT');
         if JobJnlLine.FindFirst() then begin
-            Rec."Lines Posted" := 0;
-            Rec."Success Message" := StrSubstNo('ERROR: Posting failed. %1 lines remain unprocessed.', JobJnlLine.Count());
-            exit(true);
+            Commit();
+            JobJnlPostBatch.Run(JobJnlLine);
         end;
 
-        // Set success result
         Rec."Lines Posted" := LineCount;
-        Rec."Success Message" := StrSubstNo('✅ %1 lines posted successfully (Job Journal - Negative Adjustment)', LineCount);
-
+        Rec."Success Message" := '✅ ' + Format(LineCount) + ' líneas registradas';
         exit(true);
     end;
 }

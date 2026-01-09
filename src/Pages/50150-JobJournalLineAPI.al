@@ -141,4 +141,5 @@ page 50150 "Adelante Job Journal Line API"
             }
         }
     }
+
 }
