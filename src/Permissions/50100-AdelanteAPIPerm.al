@@ -29,6 +29,7 @@ permissionset 50100 "Adelante API RIMD"
         tabledata "Job Journal Batch" = RIMD,
         tabledata "Job Journal Template" = RIMD,
         tabledata "GJW Warehouse Quantity Buffer" = RIMD,
+        tabledata "GJW Post Job Journal Cmd" = RIMD,
 
 
 
@@ -56,8 +57,7 @@ permissionset 50100 "Adelante API RIMD"
         page "GJW Job API" = X,
         page "Job Journal Batch API" = X,
         page "Job Journal Template API" = X,
-        page "Adelante Item API" = X,
-        //        page "GJW Job Journal Line API" = X,
+        page "Adelante Item API" = X, page "GJW Post Job Journal API" = X,        //        page "GJW Job Journal Line API" = X,
 
 
         // CODEUNITS (Execute)
