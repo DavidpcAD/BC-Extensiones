@@ -170,37 +170,44 @@ page 50184 "GJW Post Job Journal API"
             JobJnlLine."Line No." := 10000;
 
             // Fecha de registro
+            //if Rec."Posting Date" <> 0D then
+            //   JobJnlLine."Posting Date" := Rec."Posting Date"
+            // else
+            // JobJnlLine."Posting Date" := WorkDate();
+
+            // Fecha de registro - Intentar con la fecha recibida o WorkDate
             if Rec."Posting Date" <> 0D then
-                JobJnlLine."Posting Date" := Rec."Posting Date"
+                JobJnlLine.Validate("Posting Date", Rec."Posting Date")
             else
-                JobJnlLine."Posting Date" := WorkDate();
+                JobJnlLine.Validate("Posting Date", WorkDate());
 
-            // Type y No.
-            JobJnlLine.Type := JobJnlLine.Type::Item;
-            JobJnlLine."No." := Rec."No.";
 
-            // Campos opcionales básicos
+            // PASO 1: Proyecto PRIMERO (BC necesita contexto)
+            JobJnlLine.Validate("Job No.", Rec."Project No.");
+            JobJnlLine.Validate("Job Task No.", Rec."Project Task No.");
+
+            // PASO 2: Type y No. con VALIDATE para heredar Gen. Prod. Posting Group
+            JobJnlLine.Validate(Type, JobJnlLine.Type::Item);
+            JobJnlLine.Validate("No.", Rec."No.");
+
+            // PASO 3: Campos opcionales básicos
             if Rec."Variant Code" <> '' then
-                JobJnlLine."Variant Code" := Rec."Variant Code";
-            JobJnlLine.Quantity := Rec.Quantity;
+                JobJnlLine.Validate("Variant Code", Rec."Variant Code");
+            JobJnlLine.Validate(Quantity, Rec.Quantity);
             if Rec."Document No." <> '' then
                 JobJnlLine."Document No." := Rec."Document No.";
             if Rec.Description <> '' then
                 JobJnlLine.Description := Rec.Description;
 
-            // Proyecto
-            JobJnlLine."Job No." := Rec."Project No.";
-            JobJnlLine."Job Task No." := Rec."Project Task No.";
-
-            // Costos y precios
+            // PASO 4: Costos y precios
             if Rec."Unit Cost" <> 0 then
                 JobJnlLine."Unit Cost" := Rec."Unit Cost";
             if Rec."Unit Price" <> 0 then
                 JobJnlLine."Unit Price" := Rec."Unit Price";
 
-            // Ubicación
+            // Ubicación - USAR VALIDATE para heredar dimensiones automáticamente
             if Rec."Location Code" <> '' then
-                JobJnlLine."Location Code" := Rec."Location Code";
+                JobJnlLine.Validate("Location Code", Rec."Location Code");
 
             // Dimensiones
             if Rec."Shortcut Dimension 1 Code" <> '' then
