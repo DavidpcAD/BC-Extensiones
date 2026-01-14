@@ -72,13 +72,16 @@ page 50163 "GJW Post Command API"
     trigger OnInsertRecord(BelowxRec: Boolean): Boolean
     var
         ItemJnlLine: Record "Item Journal Line";
+        ItemLedgerEntry: Record "Item Ledger Entry";
         ItemJnlPostBatch: Codeunit "Item Jnl.-Post Batch";
         LineCount: Integer;
+        PostedEntriesCount: Integer;
         BatchName: Code[20];
         TemplateName: Code[10];
         ErrorText: Text;
         StartTime: DateTime;
         EndTime: DateTime;
+        DocumentNo: Code[20];
     begin
         // Generar Command ID si no viene del cliente
         if IsNullGuid(Rec."Command ID") then
@@ -121,6 +124,9 @@ page 50163 "GJW Post Command API"
 
         // Contar líneas ANTES del posting
         LineCount := ItemJnlLine.Count();
+
+        // ✅ CAPTURAR DOCUMENT NO ANTES DEL POSTING
+        DocumentNo := ItemJnlLine."Document No.";
 
         // 🛡️ VALIDAR QUE TODAS LAS LÍNEAS TIENEN CANTIDAD
         ItemJnlLine.Reset();
@@ -191,29 +197,35 @@ page 50163 "GJW Post Command API"
             exit(true);
         end;
 
-        // Verificar que el posting fue exitoso
-        ItemJnlLine.Reset();
-        ItemJnlLine.SetRange("Journal Template Name", TemplateName);
-        ItemJnlLine.SetRange("Journal Batch Name", BatchName);
+        // ✅✅✅ NUEVA LÓGICA: VERIFICAR POR ITEM LEDGER ENTRIES ✅✅✅
+        Sleep(500);  // Pequeña pausa para asegurar que se crearon los entries
 
-        if ItemJnlLine.FindFirst() then begin
+        ItemLedgerEntry.Reset();
+        ItemLedgerEntry.SetRange("Document No.", DocumentNo);
+        ItemLedgerEntry.SetRange("Entry Type", ItemLedgerEntry."Entry Type"::Transfer);
+        ItemLedgerEntry.SetFilter("Posting Date", '>=%1', Today() - 1);  // Últimas 24 horas
+
+        PostedEntriesCount := ItemLedgerEntry.Count();
+
+        // Verificar éxito del posting por movimientos creados
+        if PostedEntriesCount > 0 then begin
+            // ✅ ÉXITO: Se crearon movimientos
+            EndTime := CurrentDateTime();
+            Rec."Lines Posted" := LineCount;
+            Rec."Success Message" := StrSubstNo('✅ %1 líneas registradas exitosamente. %2 movimientos de inventario creados', LineCount, PostedEntriesCount);
+            Rec."Posting Status" := Rec."Posting Status"::Success;
+            Rec."Error Details" := '';
+            Rec."Processing Completed" := EndTime;
+            Rec."Duration (ms)" := Round((EndTime - StartTime) / 1000, 1);
+        end else begin
+            // ❌ No se crearon movimientos (posting falló silenciosamente)
             Rec."Lines Posted" := 0;
-            Rec."Success Message" := StrSubstNo('ERROR: El posting falló. Quedan %1 líneas sin procesar.', ItemJnlLine.Count());
-            Rec."Posting Status" := Rec."Posting Status"::PartialSuccess;
-            Rec."Error Details" := StrSubstNo('Quedan %1 líneas sin registrar de %2 totales', ItemJnlLine.Count(), LineCount);
+            Rec."Success Message" := 'ERROR: El posting no creó movimientos de inventario';
+            Rec."Posting Status" := Rec."Posting Status"::Failed;
+            Rec."Error Details" := StrSubstNo('No se encontraron Item Ledger Entries para Doc No: %1', DocumentNo);
             Rec."Processing Completed" := CurrentDateTime();
             Rec."Duration (ms)" := Round((CurrentDateTime() - StartTime) / 1000, 1);
-            exit(true);
         end;
-
-        // ✅ Establecer resultado exitoso
-        EndTime := CurrentDateTime();
-        Rec."Lines Posted" := LineCount;
-        Rec."Success Message" := StrSubstNo('✅ %1 líneas registradas exitosamente en Almacén de Obra', LineCount);
-        Rec."Posting Status" := Rec."Posting Status"::Success;
-        Rec."Error Details" := '';
-        Rec."Processing Completed" := EndTime;
-        Rec."Duration (ms)" := Round((EndTime - StartTime) / 1000, 1);
 
         exit(true);
     end;
