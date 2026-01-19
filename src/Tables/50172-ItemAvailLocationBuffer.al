@@ -41,11 +41,16 @@ table 50172 ItemAvailLocationBuffer
             Caption = 'Unit of Measure';
             DataClassification = ToBeClassified;
         }
+        field(8; VariantCode; Code[10])
+        {
+            Caption = 'Variant Code';
+            DataClassification = ToBeClassified;
+        }
     }
 
     keys
     {
-        key(PK; ItemNo, LocationCode)
+        key(PK; ItemNo, VariantCode, LocationCode)
         {
             Clustered = true;
         }

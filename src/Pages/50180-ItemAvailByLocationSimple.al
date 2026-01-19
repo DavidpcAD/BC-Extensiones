@@ -29,6 +29,10 @@ page 50180 "Item Avail. by Location Simple"
                 {
                     Caption = 'Item No.';
                 }
+                field(variantCode; Rec.VariantCode)
+                {
+                    Caption = 'Variant Code';
+                }
                 field(description; ItemDescription)
                 {
                     Caption = 'Description';
@@ -78,13 +82,14 @@ page 50180 "Item Avail. by Location Simple"
         Rec.DeleteAll();
 
         ItemLedgerEntry.SetRange("Posting Date", 0D, Today());
-        ItemLedgerEntry.SetCurrentKey("Item No.", "Location Code");
+        ItemLedgerEntry.SetCurrentKey("Item No.", "Variant Code", "Location Code");
 
         if ItemLedgerEntry.FindSet() then begin
             repeat
-                if not TempBuffer.Get(ItemLedgerEntry."Item No.", ItemLedgerEntry."Location Code") then begin
+                if not TempBuffer.Get(ItemLedgerEntry."Item No.", ItemLedgerEntry."Variant Code", ItemLedgerEntry."Location Code") then begin
                     TempBuffer.Init();
                     TempBuffer.ItemNo := ItemLedgerEntry."Item No.";
+                    TempBuffer.VariantCode := ItemLedgerEntry."Variant Code";
                     TempBuffer.LocationCode := ItemLedgerEntry."Location Code";
                     TempBuffer.TotalQuantity := 0;
                     TempBuffer.Insert();
@@ -115,10 +120,19 @@ page 50180 "Item Avail. by Location Simple"
     local procedure GetItemDescription()
     var
         Item: Record Item;
+        ItemVariant: Record "Item Variant";
     begin
         ItemDescription := '';
-        if Item.Get(Rec.ItemNo) then
-            ItemDescription := Item.Description;
+
+        // Si tiene código de variante, obtener descripción de la variante
+        if Rec.VariantCode <> '' then begin
+            if ItemVariant.Get(Rec.ItemNo, Rec.VariantCode) then
+                ItemDescription := ItemVariant.Description;
+        end else begin
+            // Si no tiene variante, obtener descripción del item
+            if Item.Get(Rec.ItemNo) then
+                ItemDescription := Item.Description;
+        end;
     end;
 
     local procedure GetUnitOfMeasure()

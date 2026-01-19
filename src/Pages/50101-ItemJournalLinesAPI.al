@@ -369,6 +369,30 @@ page 50101 "GJW Item Journal Lines API"
     end;
     */
 
+    // Prevenir líneas vacías desde Power Apps
+    trigger OnInsertRecord(BelowxRec: Boolean): Boolean
+    begin
+        // Validar que al menos tenga campos críticos antes de permitir la inserción
+        if (Rec."Item No." = '') or
+           (Rec."Journal Template Name" = '') or
+           (Rec."Journal Batch Name" = '') then
+            exit(false); // Rechazar silenciosamente la inserción si faltan campos críticos
+
+        exit(true);
+    end;
+
+    trigger OnAfterGetCurrRecord()
+    var
+        ItemJnlLine: Record "Item Journal Line";
+    begin
+        // Eliminar líneas vacías que pudieron crearse con DelayedInsert
+        ItemJnlLine.SetRange("Journal Template Name", Rec."Journal Template Name");
+        ItemJnlLine.SetRange("Journal Batch Name", Rec."Journal Batch Name");
+        ItemJnlLine.SetRange("Item No.", '');
+        if ItemJnlLine.FindSet() then
+            ItemJnlLine.DeleteAll(false);
+    end;
+
     // ========== ACCIONES PARA POWER APPS ==========
 
     [ServiceEnabled]
