@@ -105,11 +105,6 @@ page 50194 "GJW Material Consump Singleton"
             exit;
         end;
 
-        if JobTaskNo = '' then begin
-            ResultMessage := 'Error: Debe especificar el número de tarea';
-            exit;
-        end;
-
         // Ejecutar el consumo
         if not TryConsumeWarehouseMaterials(MaterialConsumption) then begin
             ResultMessage := 'Error: ' + GetLastErrorText();

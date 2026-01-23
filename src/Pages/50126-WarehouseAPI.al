@@ -98,6 +98,12 @@ page 50126 "GJW Warehouse"
                 {
                     ApplicationArea = All;
                 }
+                field(jobTaskNo; JobTaskNo)
+                {
+                    ApplicationArea = All;
+                    Caption = 'Job Task No.';
+                    Editable = false;
+                }
             }
         }
     }
@@ -123,6 +129,7 @@ page 50126 "GJW Warehouse"
     trigger OnAfterGetRecord()
     begin
         GetVendorName();
+        GetJobTaskNo();
     end;
 
     local procedure GetVendorName()
@@ -135,6 +142,16 @@ page 50126 "GJW Warehouse"
                 VendorName := Vendor.Name;
     end;
 
+    local procedure GetJobTaskNo()
+    var
+        GomJobWarehouseQty: Record "GomJob Warehouse Quantity";
+    begin
+        Clear(JobTaskNo);
+        if GomJobWarehouseQty.Get(Rec."Entry No.") then
+            JobTaskNo := GomJobWarehouseQty."Job Task No.";
+    end;
+
     var
         VendorName: Text[100];
+        JobTaskNo: Code[20];
 }

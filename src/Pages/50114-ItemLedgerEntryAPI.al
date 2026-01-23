@@ -35,6 +35,8 @@ page 50114 "GJW Item Ledger Entry API"
                 field(itemNo; Rec."Item No.") { }
                 field(variantCode; Rec."Variant Code") { }
                 field(description; Rec.Description) { }
+                field(lotNo; Rec."Lot No.") { }
+                field(serialNo; Rec."Serial No.") { }
                 field(globalDimension1Code; Rec."Global Dimension 1 Code") { }
                 field(locationCode; Rec."Location Code") { }
 
@@ -43,6 +45,12 @@ page 50114 "GJW Item Ledger Entry API"
                 field(costAmountActual; Rec."Cost Amount (Actual)") { }
                 field(gomJobCostPerUnit; Rec."GomJob Cost per Unit") { }
                 field(gomJobWarehouseQuantity; Rec."GomJob Warehouse Quantity") { }
+
+                field(jobTaskNo; JobTaskNo)
+                {
+                    Caption = 'Job Task No.';
+                    Editable = false;
+                }
             }
 
             // 🔸 Esta parte la eliminamos por ahora
@@ -56,15 +64,28 @@ page 50114 "GJW Item Ledger Entry API"
 
     var
         VendorName: Text[100];
+        JobTaskNo: Code[20];
 
     trigger OnAfterGetRecord()
     var
         Vendor: Record Vendor;
+        GomJobWarehouseQty: Record "GomJob Warehouse Quantity";
     begin
         if Rec."Source No." <> '' then
             if Vendor.Get(Rec."Source No.") then
                 VendorName := Vendor.Name
             else
                 VendorName := '';
+
+        // Obtener todas las Job Task No. relacionadas
+        Clear(JobTaskNo);
+        GomJobWarehouseQty.SetRange("Item Ledger Entry No.", Rec."Entry No.");
+        if GomJobWarehouseQty.FindSet() then
+            repeat
+                if JobTaskNo <> '' then
+                    JobTaskNo += ',' + GomJobWarehouseQty."Job Task No."
+                else
+                    JobTaskNo := GomJobWarehouseQty."Job Task No.";
+            until GomJobWarehouseQty.Next() = 0;
     end;
 }

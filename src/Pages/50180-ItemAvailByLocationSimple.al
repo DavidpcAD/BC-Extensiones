@@ -120,19 +120,10 @@ page 50180 "Item Avail. by Location Simple"
     local procedure GetItemDescription()
     var
         Item: Record Item;
-        ItemVariant: Record "Item Variant";
     begin
         ItemDescription := '';
-
-        // Si tiene código de variante, obtener descripción de la variante
-        if Rec.VariantCode <> '' then begin
-            if ItemVariant.Get(Rec.ItemNo, Rec.VariantCode) then
-                ItemDescription := ItemVariant.Description;
-        end else begin
-            // Si no tiene variante, obtener descripción del item
-            if Item.Get(Rec.ItemNo) then
-                ItemDescription := Item.Description;
-        end;
+        if Item.Get(Rec.ItemNo) then
+            ItemDescription := Item.Description;
     end;
 
     local procedure GetUnitOfMeasure()
