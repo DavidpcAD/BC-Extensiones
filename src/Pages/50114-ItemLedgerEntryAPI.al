@@ -35,12 +35,14 @@ page 50114 "GJW Item Ledger Entry API"
                 field(itemNo; Rec."Item No.") { }
                 field(variantCode; Rec."Variant Code") { }
                 field(description; Rec.Description) { }
+                field(unitOfMeasureCode; Rec."Unit of Measure Code") { }
                 field(lotNo; Rec."Lot No.") { }
                 field(serialNo; Rec."Serial No.") { }
                 field(globalDimension1Code; Rec."Global Dimension 1 Code") { }
                 field(locationCode; Rec."Location Code") { }
 
                 field(stock; Rec."Remaining Quantity") { Caption = 'Stock'; }
+                field(stockTxt; StockTxt) { Caption = 'Stock Text'; }
                 field(open; Rec.Open) { }
                 field(costAmountActual; Rec."Cost Amount (Actual)") { }
                 field(gomJobCostPerUnit; Rec."GomJob Cost per Unit") { }
@@ -65,6 +67,7 @@ page 50114 "GJW Item Ledger Entry API"
     var
         VendorName: Text[100];
         JobTaskNo: Code[20];
+        StockTxt: Text[50];
 
     trigger OnAfterGetRecord()
     var
@@ -76,6 +79,9 @@ page 50114 "GJW Item Ledger Entry API"
                 VendorName := Vendor.Name
             else
                 VendorName := '';
+
+        // Convertir stock a texto
+        StockTxt := Format(Rec."Remaining Quantity");
 
         // Obtener todas las Job Task No. relacionadas
         Clear(JobTaskNo);
