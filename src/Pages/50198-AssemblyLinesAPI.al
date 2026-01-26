@@ -1,12 +1,12 @@
-page 50197 "GJW Assembly Orders API"
+page 50198 "GJW Assembly Lines API"
 {
     PageType = API;
     APIPublisher = 'adelante';
     APIGroup = 'production';
     APIVersion = 'v1.0';
-    EntityName = 'assemblyOrder';
-    EntitySetName = 'assemblyOrders';
-    SourceTable = "Assembly Header";
+    EntityName = 'assemblyLine';
+    EntitySetName = 'assemblyLines';
+    SourceTable = "Assembly Line";
     DelayedInsert = true;
     ODataKeyFields = SystemId;
 
@@ -25,6 +25,18 @@ page 50197 "GJW Assembly Orders API"
                 {
                     Caption = 'Document Type';
                 }
+                field(documentNo; Rec."Document No.")
+                {
+                    Caption = 'Document No.';
+                }
+                field(lineNo; Rec."Line No.")
+                {
+                    Caption = 'Line No.';
+                }
+                field(type; Rec.Type)
+                {
+                    Caption = 'Type';
+                }
                 field(no; Rec."No.")
                 {
                     Caption = 'No.';
@@ -33,21 +45,28 @@ page 50197 "GJW Assembly Orders API"
                 {
                     Caption = 'Description';
                 }
-                field(itemNo; Rec."Item No.")
+                field(quantityPer; Rec."Quantity per")
                 {
-                    Caption = 'Item No.';
+                    Caption = 'Quantity per';
                 }
                 field(quantity; Rec.Quantity)
                 {
                     Caption = 'Quantity';
+                    Editable = false;
                 }
-                field(quantityToAssemble; Rec."Quantity to Assemble")
+                field(quantityBase; Rec."Quantity (Base)")
                 {
-                    Caption = 'Quantity to Assemble';
+                    Caption = 'Quantity (Base)';
+                    Editable = false;
                 }
-                field(assembledQuantity; Rec."Assembled Quantity")
+                field(quantityToConsume; Rec."Quantity to Consume")
                 {
-                    Caption = 'Assembled Quantity';
+                    Caption = 'Quantity to Consume';
+                }
+                field(consumedQuantity; Rec."Consumed Quantity")
+                {
+                    Caption = 'Consumed Quantity';
+                    Editable = false;
                 }
                 field(unitOfMeasureCode; Rec."Unit of Measure Code")
                 {
@@ -65,37 +84,10 @@ page 50197 "GJW Assembly Orders API"
                 {
                     Caption = 'Due Date';
                 }
-                field(startingDate; Rec."Starting Date")
-                {
-                    Caption = 'Starting Date';
-                }
-                field(endingDate; Rec."Ending Date")
-                {
-                    Caption = 'Ending Date';
-                }
-                field(postingDate; Rec."Posting Date")
-                {
-                    Caption = 'Posting Date';
-                }
                 field(unitCost; Rec."Unit Cost")
                 {
                     Caption = 'Unit Cost';
                 }
-                field(assignedUserId; Rec."Assigned User ID")
-                {
-                    Caption = 'Assigned User ID';
-                }
-                field(status; Rec.Status)
-                {
-                    Caption = 'Status';
-                }
-            }
-            part(assemblyLines; "GJW Assembly Lines API")
-            {
-                Caption = 'Assembly Lines';
-                EntityName = 'assemblyLine';
-                EntitySetName = 'assemblyLines';
-                SubPageLink = "Document Type" = field("Document Type"), "Document No." = field("No.");
             }
         }
     }
