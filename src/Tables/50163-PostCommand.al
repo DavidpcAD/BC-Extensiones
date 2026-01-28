@@ -27,6 +27,12 @@ table 50163 "GJW Post Command"
             Editable = false;
             DataClassification = SystemMetadata;
         }
+        field(12; "JSON Results"; Text[2048])
+        {
+            Caption = 'JSON Results';
+            Editable = false;
+            DataClassification = SystemMetadata;
+        }
         field(20; "Posting Status"; Enum "GJW Posting Status")
         {
             Caption = 'Posting Status';

@@ -11,6 +11,9 @@ rad.json
 # Visual Studio Code
 .vscode/settings.json
 .vscode/tasks.json
+.vscode/
+*.code-workspace
+*.history/
 
 # Windows
 Thumbs.db
@@ -24,3 +27,16 @@ $RECYCLE.BIN/
 *.tmp
 *.temp
 .vs/
+*.env
+*.user
+*.DS_Store
+node_modules/
+*.bak
+*.zip
+*.rar
+*.tar.gz
+*.pfx
+*.snk
+*.cer
+*.key
+*.lock.json

@@ -83,6 +83,8 @@ codeunit 50186 "GJW Material Consumption"
                                 JobJnlLine.Validate(Quantity, GomJobWarehouseQty.Quantity);
                                 JobJnlLine."Unit of Measure Code" := ItemLedgerEntry."Unit of Measure Code";
                                 JobJnlLine."Location Code" := ItemLedgerEntry."Location Code";
+                                // Vincular el consumo al ILE original
+                                JobJnlLine."Applies-to Entry" := ItemLedgerEntry."Entry No.";
 
                                 // Costo unitario
                                 if ItemLedgerEntry."Cost Amount (Actual)" <> 0 then
@@ -120,6 +122,7 @@ codeunit 50186 "GJW Material Consumption"
 
         if ProcessedCount = 0 then
             Error('No se procesó ningún material');
+
 
         exit(StrSubstNo('✓ Se consumieron %1 materiales distribuidos en %2 tareas (Cantidad total: %3) del proyecto %4',
             ProcessedCount, TasksProcessed, TotalQuantity, JobNo));

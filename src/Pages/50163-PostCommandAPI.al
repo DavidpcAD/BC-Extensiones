@@ -40,6 +40,11 @@ page 50163 "GJW Post Command API"
                     ApplicationArea = All;
                     Editable = false;
                 }
+                field(jsonResults; Rec."JSON Results")
+                {
+                    ApplicationArea = All;
+                    Editable = false;
+                }
                 field(postingStatus; Rec."Posting Status")
                 {
                     ApplicationArea = All;
@@ -82,6 +87,8 @@ page 50163 "GJW Post Command API"
         StartTime: DateTime;
         EndTime: DateTime;
         DocumentNo: Code[20];
+        LastEntryNoBefore: Integer;
+        CleanJnlLine: Record "Item Journal Line";
     begin
         // Generar Command ID si no viene del cliente
         if IsNullGuid(Rec."Command ID") then
@@ -165,6 +172,15 @@ page 50163 "GJW Post Command API"
             exit(true);
         end;
 
+        // ✅ CAPTURAR EL ÚLTIMO ENTRY NO. ANTES DE POSTEAR (con orden correcto)
+        ItemLedgerEntry.Reset();
+        ItemLedgerEntry.SetCurrentKey("Entry No.");
+        ItemLedgerEntry.Ascending(true);
+        if ItemLedgerEntry.FindLast() then
+            LastEntryNoBefore := ItemLedgerEntry."Entry No."
+        else
+            LastEntryNoBefore := 0;
+
         // ✅ EJECUTAR POSTING CON MANEJO DE ERRORES
         Clear(ItemJnlPostBatch);
 
@@ -197,22 +213,33 @@ page 50163 "GJW Post Command API"
             exit(true);
         end;
 
-        // ✅✅✅ NUEVA LÓGICA: VERIFICAR POR ITEM LEDGER ENTRIES ✅✅✅
+        // ✅✅✅ NUEVA LÓGICA: VERIFICAR POR ITEM LEDGER ENTRIES (Entry No. > LastEntryNoBefore) ✅✅✅
         Sleep(500);  // Pequeña pausa para asegurar que se crearon los entries
 
         ItemLedgerEntry.Reset();
-        ItemLedgerEntry.SetRange("Document No.", DocumentNo);
+        ItemLedgerEntry.SetCurrentKey("Entry No.");
+        ItemLedgerEntry.Ascending(true);
         ItemLedgerEntry.SetRange("Entry Type", ItemLedgerEntry."Entry Type"::Transfer);
-        ItemLedgerEntry.SetFilter("Posting Date", '>=%1', Today() - 1);  // Últimas 24 horas
+        ItemLedgerEntry.SetRange("Document No.", DocumentNo);
+        ItemLedgerEntry.SetFilter("Entry No.", '>%1', LastEntryNoBefore);
 
         PostedEntriesCount := ItemLedgerEntry.Count();
 
         // Verificar éxito del posting por movimientos creados
         if PostedEntriesCount > 0 then begin
-            // ✅ ÉXITO: Se crearon movimientos
+            // ✅ ÉXITO: Se crearon movimientos - Construir JSON con detalles
             EndTime := CurrentDateTime();
             Rec."Lines Posted" := LineCount;
+
+            // Mensaje de éxito
             Rec."Success Message" := StrSubstNo('✅ %1 líneas registradas exitosamente. %2 movimientos de inventario creados', LineCount, PostedEntriesCount);
+
+            // Ordenar por Entry No. antes de construir el JSON
+            ItemLedgerEntry.SetCurrentKey("Entry No.");
+            ItemLedgerEntry.Ascending(true);
+            // Construir JSON array con ItemNo y EntryNo
+            Rec."JSON Results" := BuildPostedEntriesJson(ItemLedgerEntry);
+
             Rec."Posting Status" := Rec."Posting Status"::Success;
             Rec."Error Details" := '';
             Rec."Processing Completed" := EndTime;
@@ -227,6 +254,46 @@ page 50163 "GJW Post Command API"
             Rec."Duration (ms)" := Round((CurrentDateTime() - StartTime) / 1000, 1);
         end;
 
+        // Limpieza automática de líneas vacías en el diario de reclasificación
+        CleanJnlLine.Reset();
+        CleanJnlLine.SetRange("Journal Template Name", TemplateName);
+        CleanJnlLine.SetRange("Journal Batch Name", BatchName);
+        CleanJnlLine.SetRange("Item No.", '');
+        CleanJnlLine.SetRange(Quantity, 0);
+        if CleanJnlLine.FindFirst() then
+            repeat
+                CleanJnlLine.Delete();
+            until CleanJnlLine.Next() = 0;
+
         exit(true);
+    end;
+
+    local procedure BuildPostedEntriesJson(var ItemLedgerEntry: Record "Item Ledger Entry"): Text
+    var
+        JsonArray: Text;
+        FirstEntry: Boolean;
+    begin
+        JsonArray := '[';
+        FirstEntry := true;
+
+        if ItemLedgerEntry.FindSet() then
+            repeat
+                if not FirstEntry then
+                    JsonArray += ','
+                else
+                    FirstEntry := false;
+
+                JsonArray += StrSubstNo(
+                    '{"itemNo":"%1","entryNo":%2,"locationCode":"%3","quantity":"%4","documentNo":"%5"}',
+                    ItemLedgerEntry."Item No.",
+                    ItemLedgerEntry."Entry No.",
+                    ItemLedgerEntry."Location Code",
+                    Format(ItemLedgerEntry.Quantity, 0, 9),
+                    ItemLedgerEntry."Document No."
+                );
+            until ItemLedgerEntry.Next() = 0;
+
+        JsonArray += ']';
+        exit(JsonArray);
     end;
 }
