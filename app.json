@@ -4,8 +4,8 @@
     "publisher": "Default Publisher",
     "version": "1.2.0.5",
     "platform": "25.0.0.0",
-    "application": "25.5.30849.31109",
-    "runtime": "14.0",
+    "application": "27.2.0.0",
+    "runtime": "16.0",
     "idRanges": [
         {
             "from": 50100,
@@ -17,7 +17,19 @@
             "id": "766530ba-9ab2-4d46-bb05-68244f5d75be",
             "name": "Goom Job Global Localization",
             "publisher": "Goom Spain",
-            "version": "25.5.10.0"
+            "version": "26.5.1.0"
+        },
+        {
+            "id": "b3780cd9-f8f8-4a83-a4d5-0c2ad87b28af",
+            "name": "Sustainability",
+            "publisher": "Microsoft",
+            "version": "27.2.42879.42994"
+        },
+        {
+            "id": "3014f422-f92b-40c4-aa3b-4a478f9a2765",
+            "name": "Goom Parque Maquinaria",
+            "publisher": "Goom Spain",
+            "version": "27.0.2.0"
         }
     ],
     "resourceExposurePolicy": {

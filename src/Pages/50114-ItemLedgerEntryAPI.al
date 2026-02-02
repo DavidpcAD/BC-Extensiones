@@ -53,6 +53,11 @@ page 50114 "GJW Item Ledger Entry API"
                     Caption = 'Job Task No.';
                     Editable = false;
                 }
+
+                field(idBoletaEntrega; Rec."ID Boleta Entrega")
+                {
+                    Caption = 'ID Boleta Entrega';
+                }
             }
 
             // 🔸 Esta parte la eliminamos por ahora

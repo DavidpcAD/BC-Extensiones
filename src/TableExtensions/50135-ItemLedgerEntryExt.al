@@ -7,5 +7,11 @@ tableextension 50135 "GJW Item Ledger Entry Ext" extends "Item Ledger Entry"
             Caption = 'Task No.';
             DataClassification = CustomerContent;
         }
+
+        field(50101; "ID Boleta Entrega"; Code[30])
+        {
+            Caption = 'ID Boleta Entrega';
+            DataClassification = ToBeClassified;
+        }
     }
 }

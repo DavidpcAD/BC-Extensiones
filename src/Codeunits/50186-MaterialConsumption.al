@@ -6,14 +6,27 @@ codeunit 50186 "GJW Material Consumption"
         GomJobWarehouseQty: Record "GomJob Warehouse Quantity";
         JobJnlLine: Record "Job Journal Line";
         JobJnlPostLine: Codeunit "Job Jnl.-Post Line";
+        JobLedgEntry: Record "Job Ledger Entry";
+
         EntryNoList: List of [Text];
         EntryNoText: Text;
         EntryNo: Integer;
         LineNo: Integer;
+
         ProcessedCount: Integer;
         TotalQuantity: Decimal;
         TasksProcessed: Integer;
-        ErrorMsg: Text;
+
+        // JSON
+        Res: JsonObject;
+        Arr: JsonArray;
+        Row: JsonObject;
+        JsonResultsTxt: Text;
+
+        DocNo: Code[20];
+        GuidTxt: Text;
+        NewLedgerEntryNo: Integer;
+        NewJobEntryNo: Integer;
     begin
         // Validar parámetros
         if ItemLedgerEntryNos = '' then
@@ -21,6 +34,10 @@ codeunit 50186 "GJW Material Consumption"
 
         if JobNo = '' then
             Error('Debe especificar el número de proyecto');
+
+        // Document No único por ejecución (clave para no mezclar movimientos)
+        GuidTxt := DelChr(Format(CreateGuid()), '=', '{}-'); // 32 chars
+        DocNo := CopyStr('CONS-' + CopyStr(GuidTxt, 1, 15), 1, 20); // max 20
 
         // Separar la lista de Entry Nos
         EntryNoList := ItemLedgerEntryNos.Split(',');
@@ -38,10 +55,12 @@ codeunit 50186 "GJW Material Consumption"
         TotalQuantity := 0;
         TasksProcessed := 0;
 
-        // Procesar cada Item Ledger Entry
+        Clear(Arr); // inicializar el array
+
         foreach EntryNoText in EntryNoList do begin
             if Evaluate(EntryNo, EntryNoText.Trim()) then begin
                 if ItemLedgerEntry.Get(EntryNo) then begin
+
                     // Validar que el material está en el almacén del proyecto
                     if ItemLedgerEntry."Location Code" <> JobNo then
                         Error('El material %1 (Entry %2) no está en el almacén del proyecto %3',
@@ -58,10 +77,9 @@ codeunit 50186 "GJW Material Consumption"
                     GomJobWarehouseQty.SetRange("Job No.", JobNo);
 
                     if GomJobWarehouseQty.FindSet() then begin
-                        // Crear una línea por cada tarea
                         repeat
                             if GomJobWarehouseQty.Quantity > 0 then begin
-                                // Crear línea de Job Journal
+
                                 Clear(JobJnlLine);
                                 JobJnlLine.Init();
                                 JobJnlLine."Journal Template Name" := 'PROJECT';
@@ -69,7 +87,9 @@ codeunit 50186 "GJW Material Consumption"
                                 JobJnlLine."Line No." := LineNo;
                                 JobJnlLine."Entry Type" := JobJnlLine."Entry Type"::Usage;
                                 JobJnlLine.Validate("Posting Date", Today);
-                                JobJnlLine."Document No." := 'CONS-' + Format(Today, 0, '<Year4><Month,2><Day,2>');
+
+                                // 🔥 Document No único para rastrear EXACTO este consumo
+                                JobJnlLine."Document No." := DocNo;
 
                                 // Datos del proyecto
                                 JobJnlLine."Job No." := JobNo;
@@ -83,10 +103,9 @@ codeunit 50186 "GJW Material Consumption"
                                 JobJnlLine.Validate(Quantity, GomJobWarehouseQty.Quantity);
                                 JobJnlLine."Unit of Measure Code" := ItemLedgerEntry."Unit of Measure Code";
                                 JobJnlLine."Location Code" := ItemLedgerEntry."Location Code";
-                                // Vincular el consumo al ILE original
                                 JobJnlLine."Applies-to Entry" := ItemLedgerEntry."Entry No.";
 
-                                // Costo unitario
+                                // Costos
                                 if ItemLedgerEntry."Cost Amount (Actual)" <> 0 then
                                     JobJnlLine."Unit Cost" := ItemLedgerEntry."Cost Amount (Actual)" / ItemLedgerEntry.Quantity
                                 else if ItemLedgerEntry."GomJob Cost per Unit" <> 0 then
@@ -94,18 +113,46 @@ codeunit 50186 "GJW Material Consumption"
 
                                 JobJnlLine."Line Type" := JobJnlLine."Line Type"::Budget;
 
-                                // Copiar dimensiones del Item Ledger Entry
+                                // Dimensiones
                                 JobJnlLine."Shortcut Dimension 1 Code" := ItemLedgerEntry."Global Dimension 1 Code";
                                 JobJnlLine."Shortcut Dimension 2 Code" := ItemLedgerEntry."Global Dimension 2 Code";
 
-                                // Intentar insertar y registrar
                                 if JobJnlLine.Insert(true) then begin
-                                    // Registrar la línea inmediatamente
+                                    // Post
                                     JobJnlPostLine.RunWithCheck(JobJnlLine);
+
+                                    // ✅ Buscar el Job Ledger Entry recién creado
+                                    JobLedgEntry.Reset();
+                                    JobLedgEntry.SetRange("Job No.", JobNo);
+                                    JobLedgEntry.SetRange("Job Task No.", JobJnlLine."Job Task No.");
+                                    JobLedgEntry.SetRange("Posting Date", JobJnlLine."Posting Date");
+                                    JobLedgEntry.SetRange("Document No.", DocNo);
+                                    JobLedgEntry.SetRange("No.", ItemLedgerEntry."Item No.");
+                                    // Si querés más precisión:
+                                    // JobLedgEntry.SetRange("User ID", UserId);
+
+                                    NewLedgerEntryNo := 0;
+                                    NewJobEntryNo := 0;
+
+                                    if JobLedgEntry.FindLast() then begin
+                                        // (1018) Ledger Entry No.
+                                        NewLedgerEntryNo := JobLedgEntry."Ledger Entry No.";
+                                        // Job Ledger Entry Entry No.
+                                        NewJobEntryNo := JobLedgEntry."Entry No.";
+                                    end;
+
+                                    // Agregar al JSON results
+                                    Clear(Row);
+                                    Row.Add('itemNo', ItemLedgerEntry."Item No.");
+                                    Row.Add('jobTaskNo', JobJnlLine."Job Task No.");
+                                    Row.Add('entryNoALM', ItemLedgerEntry."Entry No."); // original almacén
+                                    Row.Add('jobEntryNo', NewJobEntryNo);
+                                    Row.Add('ledgerEntryNo', NewLedgerEntryNo); // 🔥 este es el 1018 que querés
+                                    Row.Add('quantity', GomJobWarehouseQty.Quantity);
+                                    Arr.Add(Row);
 
                                     TasksProcessed += 1;
                                     TotalQuantity += JobJnlLine.Quantity;
-
                                     LineNo += 10000;
                                 end else
                                     Error('Error al crear línea de diario para Entry %1, Tarea %2', EntryNo, GomJobWarehouseQty."Job Task No.");
@@ -123,15 +170,19 @@ codeunit 50186 "GJW Material Consumption"
         if ProcessedCount = 0 then
             Error('No se procesó ningún material');
 
+        // Empaquetar respuesta estilo postCommands
+        Clear(Res);
+        Res.Add('successMessage',
+            StrSubstNo('✓ Se consumieron %1 materiales distribuidos en %2 tareas (Cantidad total: %3) del proyecto %4',
+                ProcessedCount, TasksProcessed, TotalQuantity, JobNo)
+        );
+        Res.Add('linesPosted', TasksProcessed);
+        Res.Add('documentNo', DocNo); // para debug y trazabilidad
 
-        exit(StrSubstNo('✓ Se consumieron %1 materiales distribuidos en %2 tareas (Cantidad total: %3) del proyecto %4',
-            ProcessedCount, TasksProcessed, TotalQuantity, JobNo));
-    end;
+        // jsonResults como texto (igual que tu postCommands)
+        Arr.WriteTo(JsonResultsTxt);
+        Res.Add('jsonResults', JsonResultsTxt);
 
-    local procedure ValidateJobTask(JobNo: Code[20]; JobTaskNo: Code[20]): Boolean
-    var
-        JobTask: Record "Job Task";
-    begin
-        exit(JobTask.Get(JobNo, JobTaskNo));
+        exit(Format(Res));
     end;
 }
