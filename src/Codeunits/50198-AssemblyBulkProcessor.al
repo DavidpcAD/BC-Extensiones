@@ -189,7 +189,7 @@ codeunit 50198 "GJW Assembly Bulk Processor"
     begin
         AssemblyLine.SetRange("Document Type", AssemblyHeader."Document Type");
         AssemblyLine.SetRange("Document No.", AssemblyHeader."No.");
-        if AssemblyLine.FindSet(true, false) then  // true = allow modify
+        if AssemblyLine.FindSet(true) then  // true = allow modify
             repeat
                 // Solo procesar Items con Location Code
                 if (AssemblyLine.Type = AssemblyLine.Type::Item) and (AssemblyLine."Location Code" <> '') then begin
