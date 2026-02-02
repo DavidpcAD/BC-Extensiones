@@ -2,7 +2,7 @@ tableextension 50137 "GJW Item Jnl Line Post Ext" extends "Item Journal Line"
 {
     fields
     {
-        field(50101; "GJW Post This Line"; Boolean)
+        field(50105; "GJW Post This Line"; Boolean)
         {
             Caption = 'Post This Line';
             DataClassification = CustomerContent;

@@ -7,6 +7,16 @@ tableextension 50133 "GJW Item Journal Line Ext" extends "Item Journal Line"
             Caption = 'Task No.';
             DataClassification = CustomerContent;
         }
+        field(50103; "New Job No."; Code[20])
+        {
+            Caption = 'New Job No.';
+            DataClassification = CustomerContent;
+        }
+        field(50104; "New Job Task No."; Code[20])
+        {
+            Caption = 'New Job Task No.';
+            DataClassification = CustomerContent;
+        }
     }
 
     trigger OnBeforeInsert()

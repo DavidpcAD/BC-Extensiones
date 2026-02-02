@@ -32,7 +32,9 @@ codeunit 50159 "GJW Item Transfer Bulk"
         ItemNo: Code[20];                // Código del producto a transferir
         LocationCode: Code[10];          // Código del almacén de origen
         NewLocationCode: Code[10];       // Código del almacén de destino
-        TaskNo: Code[20];                // Número de tarea de proyecto (opcional)
+        TaskNo: Code[20];                // Número de tarea de proyecto origen (opcional)
+        NewJobNo: Code[20];              // Número de proyecto destino (opcional)
+        NewJobTaskNo: Code[20];          // Número de tarea de proyecto destino (opcional)
         Description: Text[100];          // Descripción de la transferencia
         Quantity: Decimal;               // Cantidad a transferir
         PostingDate: Date;               // Fecha de registro de la transferencia
@@ -75,7 +77,9 @@ codeunit 50159 "GJW Item Transfer Bulk"
                 Clear(ItemNo);           // Limpiar código de producto
                 Clear(LocationCode);     // Limpiar código de almacén origen
                 Clear(NewLocationCode);  // Limpiar código de almacén destino
-                Clear(TaskNo);           // Limpiar número de tarea
+                Clear(TaskNo);           // Limpiar número de tarea origen
+                Clear(NewJobNo);         // Limpiar número de proyecto destino
+                Clear(NewJobTaskNo);     // Limpiar número de tarea destino
                 Clear(Description);      // Limpiar descripción
                 Clear(Quantity);         // Limpiar cantidad
                 Clear(PostingDate);      // Limpiar fecha de registro
@@ -101,9 +105,17 @@ codeunit 50159 "GJW Item Transfer Bulk"
                 if Obj.Get('quantity', Val) and (not Val.AsValue().IsNull()) then  // Si existe y no es null
                     Quantity := Val.AsValue().AsDecimal();  // Convertir a decimal
 
-                // ─── Leer taskNo (número de tarea - opcional) ───
+                // ─── Leer taskNo (número de tarea origen - opcional) ───
                 if Obj.Get('taskNo', Val) and (not Val.AsValue().IsNull()) then  // Si existe y no es null
-                    TaskNo := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(TaskNo));  // Copiar número de tarea
+                    TaskNo := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(TaskNo));  // Copiar número de tarea origen
+
+                // ─── Leer newJobNo (número de proyecto destino - opcional) ───
+                if Obj.Get('newJobNo', Val) and (not Val.AsValue().IsNull()) then  // Si existe y no es null
+                    NewJobNo := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NewJobNo));  // Copiar proyecto destino
+
+                // ─── Leer newJobTaskNo (número de tarea destino - opcional) ───
+                if Obj.Get('newJobTaskNo', Val) and (not Val.AsValue().IsNull()) then  // Si existe y no es null
+                    NewJobTaskNo := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NewJobTaskNo));  // Copiar tarea destino
 
                 // ─── Leer description (descripción - opcional) ───
                 if Obj.Get('description', Val) and (not Val.AsValue().IsNull()) then  // Si existe y no es null
@@ -147,7 +159,7 @@ codeunit 50159 "GJW Item Transfer Bulk"
                     // ═══ PASO 8: Crear línea de diario de transferencia ═══
                     // Llamar función local para insertar la línea pasando todos los parámetros
                     if InsertTransferLine(ItemJnlLine, TemplateName, BatchName, LineNo, ItemNo, LocationCode,
-                        NewLocationCode, Quantity, TaskNo, Description, PostingDate, DocumentNo, VariantCode, AppliesFromEntry) then begin
+                        NewLocationCode, Quantity, TaskNo, NewJobNo, NewJobTaskNo, Description, PostingDate, DocumentNo, VariantCode, AppliesFromEntry) then begin
                         InsCount += 1;     // Incrementar contador de líneas insertadas exitosamente
                         LineNo += 10000;   // Incrementar número de línea para la siguiente entrada
                     end else begin  // Si la inserción falló
@@ -225,7 +237,9 @@ codeunit 50159 "GJW Item Transfer Bulk"
     //   - LocationCode: Código del almacén de origen
     //   - NewLocationCode: Código del almacén de destino
     //   - Quantity: Cantidad a transferir
-    //   - TaskNo: Número de tarea de proyecto (opcional)
+    //   - TaskNo: Número de tarea de proyecto origen (opcional)
+    //   - NewJobNo: Número de proyecto destino (opcional)
+    //   - NewJobTaskNo: Número de tarea destino (opcional)
     //   - Description: Descripción de la transferencia
     //   - PostingDate: Fecha de registro
     //   - DocumentNo: Número de documento
@@ -242,7 +256,9 @@ codeunit 50159 "GJW Item Transfer Bulk"
         LocationCode: Code[10];        // Almacén origen
         NewLocationCode: Code[10];     // Almacén destino
         Quantity: Decimal;             // Cantidad
-        TaskNo: Code[20];              // Tarea de proyecto
+        TaskNo: Code[20];              // Tarea de proyecto origen
+        NewJobNo: Code[20];            // Proyecto destino
+        NewJobTaskNo: Code[20];        // Tarea destino
         Description: Text[100];        // Descripción
         PostingDate: Date;             // Fecha de registro
         DocumentNo: Code[20];          // Número de documento
@@ -299,9 +315,15 @@ codeunit 50159 "GJW Item Transfer Bulk"
         // ═══ PASO 8: Validar cantidad (siempre POSITIVA para Transfer) ═══
         ItemJnlLine.Validate(Quantity, Abs(Quantity));  // Asegurar que sea positiva
 
-        // ═══ PASO 9: Asignar número de tarea de proyecto si se proporcionó ═══
+        // ═══ PASO 9: Asignar número de tarea de proyecto origen si se proporcionó ═══
         if TaskNo <> '' then  // Si hay tarea especificada
-            ItemJnlLine."Task No." := TaskNo;  // Asignar tarea (sin validar)
+            ItemJnlLine."Task No." := TaskNo;  // Asignar tarea origen (sin validar)
+
+        // ═══ PASO 10: Asignar proyecto y tarea destino para vincular después del posting ═══
+        if NewJobNo <> '' then  // Si se especificó proyecto destino
+            ItemJnlLine."New Job No." := NewJobNo;  // Guardar para crear vínculo post-registro
+        if NewJobTaskNo <> '' then  // Si se especificó tarea destino
+            ItemJnlLine."New Job Task No." := NewJobTaskNo;  // Guardar para crear vínculo post-registro
 
         // ═══ PASO 11: Asignar descripción de la transferencia ═══
         if Description <> '' then  // Si se proporcionó descripción personalizada
