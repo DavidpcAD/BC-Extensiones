@@ -1,12 +1,11 @@
-page 50105 "GJW Works Decomp OnSite"
+page 50106 "ConsumidoObra"
 {
     PageType = API;
     APIPublisher = 'adelante';
     APIGroup = 'construction';
     APIVersion = 'v1.0';
-    EntityName = 'gomJobWorkDecomposedRead';
-    EntitySetName = 'gomJobWorksDecomposedRead';
-
+    EntityName = 'consumidoObra';
+    EntitySetName = 'consumidoObraSet';
     SourceTable = "DecompReadAPITmp";
     InsertAllowed = false;
     ModifyAllowed = false;
@@ -46,8 +45,6 @@ page 50105 "GJW Works Decomp OnSite"
         jl: Record "Job Ledger Entry";
         ItemVariant: Record "Item Variant";
 
-
-
     trigger OnOpenPage()
     begin
         BuildDecompReadAPITmp();
@@ -65,8 +62,6 @@ page 50105 "GJW Works Decomp OnSite"
         if tmpRec.Count = 0 then
             BuildDecompReadAPITmp();
     end;
-
-    // ...existing code...
 
     local procedure BuildDecompReadAPITmp()
     var
@@ -110,7 +105,6 @@ page 50105 "GJW Works Decomp OnSite"
                 jl.SetRange("Location Code", decompLine."Works No.");
                 jl.SetRange("Job Task No.", decompLine."Task No.");
                 jl.SetRange("Job No.", decompLine."Job No.");
-                // Se elimina el filtro de solo positivas para considerar devoluciones (cantidades negativas)
                 jl.CalcSums(Quantity);
                 tmpRec.qtyGastado := jl.Quantity;
                 tmpRec.cantidadDisponible := decompLine."Quantity" - tmpRec.qtyGastado;

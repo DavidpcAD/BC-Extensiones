@@ -72,6 +72,12 @@ page 50161 "Job Journal Batch API"
                     Caption = 'Recurring';
                     ApplicationArea = All;
                 }
+
+                field(idColaborador; Rec."ADL ID Colaborador")
+                {
+                    Caption = 'ID Colaborador';
+                    ApplicationArea = All;
+                }
             }
 
         }

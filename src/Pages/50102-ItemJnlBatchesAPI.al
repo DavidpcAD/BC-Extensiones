@@ -98,6 +98,13 @@ page 50102 "GJW Item Journal Batches API"
                     ApplicationArea = All;
                 }
 
+                // --- Campo ID Colaborador ---
+                field(idColaborador; Rec."GJW ID Colaborador")
+                {
+                    ApplicationArea = All;
+                    Caption = 'ID Colaborador';
+                }
+
                 // --- Campo para forzar SetupNewBatch ---
                 field(runSetup; RunSetup)
                 {

@@ -4,7 +4,7 @@ pageextension 50144 "GJW Job Task Lines Subform Ext" extends "Job Task Lines Sub
     {
         addafter(Description)
         {
-            field("ID Encargado"; Rec."ID Encargado")
+            field("ID Encargado Text"; Rec."ID Encargado Text")
             {
                 ApplicationArea = All;
                 Caption = 'ID Encargado';

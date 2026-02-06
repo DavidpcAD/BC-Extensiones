@@ -1,6 +1,6 @@
 codeunit 50186 "GJW Material Consumption"
 {
-    procedure ConsumeWarehouseMaterials(ItemLedgerEntryNos: Text; JobNo: Code[20]; JobTaskNo: Code[20]): Text
+    procedure ConsumeWarehouseMaterials(ItemLedgerEntryNos: Text; JobNo: Code[20]; JobTaskNo: Code[20]; DocumentNo: Code[20]): Text
     var
         ItemLedgerEntry: Record "Item Ledger Entry";
         GomJobWarehouseQty: Record "GomJob Warehouse Quantity";
@@ -35,9 +35,8 @@ codeunit 50186 "GJW Material Consumption"
         if JobNo = '' then
             Error('Debe especificar el número de proyecto');
 
-        // Document No único por ejecución (clave para no mezclar movimientos)
-        GuidTxt := DelChr(Format(CreateGuid()), '=', '{}-'); // 32 chars
-        DocNo := CopyStr('CONS-' + CopyStr(GuidTxt, 1, 15), 1, 20); // max 20
+        // Document No: usar el recibido como parámetro
+        DocNo := DocumentNo;
 
         // Separar la lista de Entry Nos
         EntryNoList := ItemLedgerEntryNos.Split(',');
@@ -157,6 +156,7 @@ codeunit 50186 "GJW Material Consumption"
                                 end else
                                     Error('Error al crear línea de diario para Entry %1, Tarea %2', EntryNo, GomJobWarehouseQty."Job Task No.");
                             end;
+
                         until GomJobWarehouseQty.Next() = 0;
 
                         ProcessedCount += 1;

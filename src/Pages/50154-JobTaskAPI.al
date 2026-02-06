@@ -25,7 +25,8 @@ page 50154 "Job Task API"
                 field(jobNo; Rec."Job No.") { Caption = 'Project No.'; }
                 field(jobTaskNo; Rec."Job Task No.") { Caption = 'Project Task No.'; }
                 field(description; Rec.Description) { Caption = 'Description'; }
-                field(idEncargado; Rec."ID Encargado") { Caption = 'ID Encargado'; }
+                field(idEncargado; Rec."ID Encargado") { Caption = 'ID Encargado'; ObsoleteState = Pending; }
+                field(idEncargadoText; Rec."ID Encargado Text") { Caption = 'ID Encargado'; }
                 field(jobTaskType; Rec."Job Task Type") { Caption = 'Task Type'; }
                 field(locationCode; Rec."Location Code") { Caption = 'Location Code'; }
                 field(globalDim1; Rec."Global Dimension 1 Code") { Caption = 'Global Dimension 1'; }

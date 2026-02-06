@@ -36,7 +36,8 @@ page 50120 "GJWWorkLines"
                 field(versionCode; Rec."Version Code") { Caption = 'Version Code'; }
                 field(jobNo; Rec."Job No.") { Caption = 'Job No.'; }
                 field(codeOrder; Rec."Code Order") { Caption = 'Sorting Code'; }
-                field(idEncargado; Rec."ID Encargado") { Caption = 'ID Encargado'; }
+                field(idEncargado; Rec."ID Encargado") { Caption = 'ID Encargado'; ObsoleteState = Pending; }
+                field(idEncargadoText; Rec."ID Encargado Text") { Caption = 'ID Encargado'; }
 
                 field(taskType; Rec."Task Type") { Caption = 'Task Type'; }
                 field(taskNo; Rec."Task No.") { Caption = 'Task No.'; }

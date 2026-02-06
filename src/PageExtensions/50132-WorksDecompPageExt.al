@@ -4,7 +4,7 @@ pageextension 50132 "GJW Works Decomp Page Ext" extends "GomJob Works Decomposed
     {
         addafter(Description)
         {
-            field("ID Encargado"; Rec."ID Encargado")
+            field("ID Encargado Text"; Rec."ID Encargado Text")
             {
                 ApplicationArea = All;
                 Caption = 'ID Encargado';

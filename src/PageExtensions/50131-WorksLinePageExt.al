@@ -4,7 +4,7 @@ pageextension 50131 "GJW Works Line Page Ext" extends "GomJob Works Sub"
     {
         addafter(Description)
         {
-            field("ID Encargado"; Rec."ID Encargado")
+            field("ID Encargado Text"; Rec."ID Encargado Text")
             {
                 ApplicationArea = All;
                 Caption = 'ID Encargado';

@@ -47,7 +47,8 @@ page 50112 "GJW Works Decomposed Line API"
                 field(unitCost; Rec."Unit Cost") { Caption = 'Unit Cost'; }
                 field(variantCode; Rec."Variant Code") { Caption = 'Variant Code'; }
                 field(expectedDate; Rec."Expected Date") { Caption = 'Expected Date'; }
-                field(idEncargado; Rec."ID Encargado") { Caption = 'ID Encargado'; }
+                field(idEncargado; Rec."ID Encargado") { Caption = 'ID Encargado'; ObsoleteState = Pending; }
+                field(idEncargadoText; Rec."ID Encargado Text") { Caption = 'ID Encargado'; }
             }
         }
     }

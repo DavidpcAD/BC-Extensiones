@@ -2,9 +2,9 @@
     "id": "57df5d7b-9944-47e7-92ad-b264a295ceb0",
     "name": "AdelanteAPI",
     "publisher": "Default Publisher",
-    "version": "1.2.0.5",
-    "platform": "25.0.0.0",
-    "application": "27.2.0.0",
+    "version": "1.2.1.5",
+    "platform": "27.0.0.0",
+    "application": "27.0.0.0",
     "runtime": "16.0",
     "idRanges": [
         {
@@ -18,12 +18,6 @@
             "name": "Goom Job Global Localization",
             "publisher": "Goom Spain",
             "version": "26.5.1.0"
-        },
-        {
-            "id": "b3780cd9-f8f8-4a83-a4d5-0c2ad87b28af",
-            "name": "Sustainability",
-            "publisher": "Microsoft",
-            "version": "27.2.42879.42994"
         },
         {
             "id": "3014f422-f92b-40c4-aa3b-4a478f9a2765",

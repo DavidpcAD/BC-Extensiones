@@ -4,7 +4,7 @@ pageextension 50142 "GJW Works Page Ext" extends "GomJob Works"
     {
         addlast(content)
         {
-            field("ID Encargado"; Rec."ID Encargado")
+            field("ID Encargado Text"; Rec."ID Encargado Text")
             {
                 ApplicationArea = All;
                 Caption = 'ID Encargado';

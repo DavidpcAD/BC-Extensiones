@@ -41,6 +41,12 @@ page 50194 "GJW Material Consump Singleton"
                     Caption = 'Job Task No.';
                     ToolTip = 'Número de la tarea del proyecto';
                 }
+                field(documentNo; DocumentNo)
+                {
+                    ApplicationArea = All;
+                    Caption = 'Document No.';
+                    ToolTip = 'Número de documento de la boleta de entrega (ej: BE000123)';
+                }
                 field(executeConsumption; ExecuteConsumption)
                 {
                     ApplicationArea = All;
@@ -73,6 +79,7 @@ page 50194 "GJW Material Consump Singleton"
         ItemLedgerEntryNos: Text;
         JobNo: Code[20];
         JobTaskNo: Code[20];
+        DocumentNo: Code[20];
         ExecuteConsumption: Boolean;
         ResultMessage: Text;
         Success: Boolean;
@@ -105,6 +112,11 @@ page 50194 "GJW Material Consump Singleton"
             exit;
         end;
 
+        if DocumentNo = '' then begin
+            ResultMessage := 'Error: Debe especificar el número de documento';
+            exit;
+        end;
+
         // Ejecutar el consumo
         if not TryConsumeWarehouseMaterials(MaterialConsumption) then begin
             ResultMessage := 'Error: ' + GetLastErrorText();
@@ -120,6 +132,6 @@ page 50194 "GJW Material Consump Singleton"
     [TryFunction]
     local procedure TryConsumeWarehouseMaterials(var MaterialConsumption: Codeunit "GJW Material Consumption")
     begin
-        ResultMessage := MaterialConsumption.ConsumeWarehouseMaterials(ItemLedgerEntryNos, JobNo, JobTaskNo);
+        ResultMessage := MaterialConsumption.ConsumeWarehouseMaterials(ItemLedgerEntryNos, JobNo, JobTaskNo, DocumentNo);
     end;
 }

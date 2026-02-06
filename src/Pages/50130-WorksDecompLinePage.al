@@ -30,7 +30,8 @@ page 50130 "GJW Decomposed Lines API"
                 field(lineNo; Rec."Line No.") { Caption = 'Line No.'; }
                 field(taskNo; Rec."Task No.") { Caption = 'Task No.'; }
                 field(codeOrder; Rec."Code Order") { Caption = 'Sorting Code'; }
-                field(idEncargado; Rec."ID Encargado") { Caption = 'ID Encargado'; }
+                field(idEncargado; Rec."ID Encargado") { Caption = 'ID Encargado'; ObsoleteState = Pending; }
+                field(idEncargadoText; Rec."ID Encargado Text") { Caption = 'ID Encargado'; }
 
                 // Info de origen
                 field(sourceCode; Rec."Source Code") { Caption = 'Source Code'; }

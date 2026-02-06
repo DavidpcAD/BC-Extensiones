@@ -9,9 +9,18 @@ page 50164 "GJW Post Batch Web Service"
         {
             repeater(Group)
             {
-                field(systemId; Rec.SystemId) { }
-                field(journalTemplateName; Rec."Journal Template Name") { }
-                field(name; Rec.Name) { }
+                field(systemId; Rec.SystemId)
+                {
+                    ApplicationArea = All;
+                }
+                field(journalTemplateName; Rec."Journal Template Name")
+                {
+                    ApplicationArea = All;
+                }
+                field(name; Rec.Name)
+                {
+                    ApplicationArea = All;
+                }
             }
         }
     }

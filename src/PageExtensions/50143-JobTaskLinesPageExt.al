@@ -4,7 +4,7 @@ pageextension 50143 "GJW Job Task Lines Ext" extends "Job Task Lines"
     {
         addafter(Description)
         {
-            field("ID Encargado"; Rec."ID Encargado")
+            field("ID Encargado Text"; Rec."ID Encargado Text")
             {
                 ApplicationArea = All;
                 Caption = 'ID Encargado';

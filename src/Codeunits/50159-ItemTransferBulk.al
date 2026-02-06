@@ -202,11 +202,11 @@ codeunit 50159 "GJW Item Transfer Bulk"
 
         Commit();  // Confirmar transacción actual para persistir las líneas creadas
 
-        // ═══ PASO 12: Ejecutar el posting usando el método directo ═══
-        // Crear instancia del codeunit de posting
+        // ═══ PASO 12: Ejecutar el posting usando Item Jnl.-Post Batch (CRÍTICO) ═══
+        // Usar "Item Jnl.-Post Batch" en lugar de "Item Jnl.-Post Line" para transferencias
         Clear(ItemJnlPostBatch);
 
-        // Ejecutar posting sin diálogos usando el método SetSuppressCommit
+        // Ejecutar posting en batch (esto crea AMBOS movimientos: salida + entrada)
         ItemJnlLine.Reset();
         ItemJnlLine.SetRange("Journal Template Name", TemplateName);
         ItemJnlLine.SetRange("Journal Batch Name", BatchName);
@@ -214,7 +214,7 @@ codeunit 50159 "GJW Item Transfer Bulk"
         ClearLastError();  // Limpiar cualquier error previo
 
         // Intentar ejecutar posting capturando cualquier error
-        if not Codeunit.Run(Codeunit::"Item Jnl.-Post Line", ItemJnlLine) then begin
+        if not Codeunit.Run(Codeunit::"Item Jnl.-Post Batch", ItemJnlLine) then begin
             ErrorMsg := GetLastErrorText();  // Capturar mensaje de error
             if ErrorMsg = '' then
                 ErrorMsg := 'Error desconocido durante el posting';
@@ -222,7 +222,8 @@ codeunit 50159 "GJW Item Transfer Bulk"
         end;
 
         // ═══ PASO 13: Retornar mensaje de éxito ═══
-        exit(StrSubstNo('✅ %1 transferencias registradas correctamente', InsCount));  // Confirmar éxito
+        // Retornar detalles de los movimientos creados para diagnóstico
+        exit(StrSubstNo('✅ %1 transferencias registradas. Verifica Item Ledger Entries con Document No. que comience con TRANS-', InsCount));  // Confirmar éxito
     end;  // Fin del procedimiento ProcessTransfers
 
     // ══════════════════════════════════════════════════════════════════════════════
@@ -320,10 +321,19 @@ codeunit 50159 "GJW Item Transfer Bulk"
             ItemJnlLine."Task No." := TaskNo;  // Asignar tarea origen (sin validar)
 
         // ═══ PASO 10: Asignar proyecto y tarea destino para vincular después del posting ═══
+        // IMPORTANTE: NO asignar Job No./Task No. si están vacíos (transferencias a almacén general)
         if NewJobNo <> '' then  // Si se especificó proyecto destino
             ItemJnlLine."New Job No." := NewJobNo;  // Guardar para crear vínculo post-registro
         if NewJobTaskNo <> '' then  // Si se especificó tarea destino
             ItemJnlLine."New Job Task No." := NewJobTaskNo;  // Guardar para crear vínculo post-registro
+
+        // ═══ PASO 10.5: CRÍTICO - Limpiar campos de proyecto en origen si van a almacén general ═══
+        // Esto evita que BC intente validar proyectos en transferencias simples
+        if (NewJobNo = '') and (NewJobTaskNo = '') then begin
+            ItemJnlLine."Job No." := '';           // Limpiar proyecto origen
+            ItemJnlLine."Job Task No." := '';      // Limpiar tarea origen
+            ItemJnlLine."Task No." := '';          // Limpiar task no.
+        end;
 
         // ═══ PASO 11: Asignar descripción de la transferencia ═══
         if Description <> '' then  // Si se proporcionó descripción personalizada

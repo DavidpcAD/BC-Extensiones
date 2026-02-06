@@ -24,7 +24,8 @@ page 50170 "GJW Job API"
                 field(id; Rec.SystemId) { Caption = 'Id'; }
                 field(no; Rec."No.") { Caption = 'No.'; }
                 field(description; Rec.Description) { Caption = 'Description'; }
-                field(idEncargado; Rec."ID Encargado") { Caption = 'ID Encargado'; }
+                field(idEncargado; Rec."ID Encargado") { Caption = 'ID Encargado'; ObsoleteState = Pending; }
+                field(idEncargadoText; Rec."ID Encargado Text") { Caption = 'ID Encargado'; }
                 field(personResponsible; Rec."Person Responsible") { Caption = 'Person Responsible'; }
                 field(status; Rec.Status) { Caption = 'Status'; }
                 field(creationDate; Rec."Creation Date") { Caption = 'Creation Date'; }

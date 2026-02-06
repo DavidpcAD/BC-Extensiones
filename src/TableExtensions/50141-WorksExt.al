@@ -6,6 +6,8 @@ tableextension 50141 "GJW Works Ext" extends "GomJob Works"
         {
             Caption = 'ID Encargado';
             DataClassification = CustomerContent;
+            ObsoleteState = Pending;
+            ObsoleteReason = 'Replaced by field 50200 ID Encargado Text';
 
             trigger OnValidate()
             var
@@ -27,6 +29,12 @@ tableextension 50141 "GJW Works Ext" extends "GomJob Works"
                         JobTask.Modify(true);
                     until JobTask.Next() = 0;
             end;
+        }
+
+        field(50200; "ID Encargado Text"; Text[100])
+        {
+            Caption = 'ID Encargado';
+            DataClassification = CustomerContent;
         }
     }
 }

@@ -2,6 +2,12 @@ tableextension 50136 "GJW Item Jnl Batch Ext" extends "Item Journal Batch"
 {
     fields
     {
+        field(50099; "GJW ID Colaborador"; Code[20])
+        {
+            Caption = 'ID Colaborador';
+            DataClassification = CustomerContent;
+        }
+
         field(50100; "GJW Trigger Post"; Boolean)
         {
             Caption = 'Trigger Post';

@@ -31,7 +31,7 @@ codeunit 50124 "GJW WorkLines Bulk"
         QuantityToProduce: Decimal;
         UnitOfMeasure: Code[10];
         CodeOrder: Code[50];
-        IdEncargado: Integer;
+        IdEncargado: Text[100];
         ReStudy: Boolean;
     begin
         // ✅ SOLO INSERTAR NUEVOS
@@ -99,7 +99,7 @@ codeunit 50124 "GJW WorkLines Bulk"
                             CodeOrder := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(CodeOrder));
 
                         if Obj.Get('idEncargado', Val) and (not Val.AsValue().IsNull()) then
-                            IdEncargado := Val.AsValue().AsInteger();
+                            IdEncargado := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(IdEncargado));
 
                         if Obj.Get('reStudy', Val) and (not Val.AsValue().IsNull()) then
                             ReStudy := Val.AsValue().AsBoolean();
@@ -139,7 +139,7 @@ codeunit 50124 "GJW WorkLines Bulk"
     local procedure InsertNewLine(var RecLine: Record "GomJob Works Line";
         WorksNo: Code[20]; VersionCode: Code[20]; LineNo: Integer; LineTypeTxt: Text; TaskTypeTxt: Text;
         TaskNo: Code[50]; Description: Text[250]; Quantity: Decimal; UnitAmount: Decimal; LineAmount: Decimal;
-        QuantityToProduce: Decimal; UnitOfMeasure: Code[10]; CodeOrder: Code[50]; IdEncargado: Integer;
+        QuantityToProduce: Decimal; UnitOfMeasure: Code[10]; CodeOrder: Code[50]; IdEncargado: Text[100];
         ReStudy: Boolean): Boolean
     var
         LineTypeEnum: Enum "GomJob Works Line Type";
@@ -174,7 +174,7 @@ codeunit 50124 "GJW WorkLines Bulk"
         RecLine."Quantity to Produce" := QuantityToProduce;
         RecLine."Unit of Measure" := UnitOfMeasure;
         RecLine."Code Order" := CodeOrder;
-        RecLine."ID Encargado" := IdEncargado;
+        RecLine."ID Encargado Text" := IdEncargado;
         RecLine."Re-Study" := ReStudy;
 
         exit(RecLine.Insert(true));
