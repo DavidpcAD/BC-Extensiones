@@ -1,17 +1,24 @@
 page 50105 "GJW Works Decomp OnSite"
 {
     PageType = API;
+
     APIPublisher = 'adelante';
     APIGroup = 'construction';
     APIVersion = 'v1.0';
     EntityName = 'gomJobWorkDecomposedRead';
     EntitySetName = 'gomJobWorksDecomposedRead';
 
-    SourceTable = "DecompReadAPITmp";
+    SourceTable = "GomJob Works Decomposed Lines"; // 70720580
+    // Solo líneas de tipo Item para aligerar la consulta
+    SourceTableView = where(Type = const(Item));
+
+    // Solo lectura (ideal para Power Apps en campo)
     InsertAllowed = false;
     ModifyAllowed = false;
     DeleteAllowed = false;
     DelayedInsert = true;
+
+    ODataKeyFields = SystemId;
 
     layout
     {
@@ -19,7 +26,12 @@ page 50105 "GJW Works Decomp OnSite"
         {
             repeater(General)
             {
-                field(category; Rec.category) { Caption = 'Category'; ApplicationArea = All; }
+                // --- System fields (útiles para trazabilidad) ---
+                field(systemId; Rec.SystemId) { Caption = 'System Id'; }
+                field(systemCreatedAt; Rec.SystemCreatedAt) { Caption = 'System Created At'; }
+                field(systemModifiedAt; Rec.SystemModifiedAt) { Caption = 'System Modified At'; }
+
+                // --- Campos base (solo los que pediste) ---
                 field(worksNo; Rec."Works No.") { ApplicationArea = All; }
                 field(taskNo; Rec."Task No.") { ApplicationArea = All; }
                 field(description; Rec."Description") { ApplicationArea = All; }
@@ -27,143 +39,142 @@ page 50105 "GJW Works Decomp OnSite"
                 field(jobNo; Rec."Job No.") { ApplicationArea = All; }
                 field(unitOfMeasure; Rec."Unit of Measure") { ApplicationArea = All; }
                 field(taskType; Rec."Task Type") { ApplicationArea = All; }
-                field(type; Rec."Type") { ApplicationArea = All; }
+                field(type; Rec."Type") { ApplicationArea = All; } // vendrá siempre "Item" por el filtro
                 field(no; Rec."No.") { ApplicationArea = All; }
                 field(performance; Rec."Performance") { ApplicationArea = All; }
                 field(variantCode; Rec."Variant Code") { ApplicationArea = All; }
-                field(parentTaskTemp; Rec.parentTaskTemp) { Caption = 'Parent Task'; ApplicationArea = All; Editable = false; }
-                field(nomVariante; Rec.VariantDesc) { Caption = 'Variant Description'; ApplicationArea = All; Editable = false; }
-                field(cantidadGastado; Rec.qtyGastado) { Caption = 'Cantidad Gastada'; ApplicationArea = All; Editable = false; }
-                field(cantidadDisponible; Rec.cantidadDisponible) { Caption = 'Cantidad Disponible'; ApplicationArea = All; Editable = false; }
-                field(estadoConsumo; Rec.estadoConsumo) { Caption = 'Estado Consumo'; ApplicationArea = All; Editable = false; }
+
+                // --- Calculadas (solo lectura) ---
+                field(parentTaskTemp; GetParentTaskTemp())
+                {
+                    Caption = 'Parent Task';
+                    ApplicationArea = All;
+                    Editable = false;
+                }
+
+                field(nomVariante; VariantDesc)
+                {
+                    Caption = 'Variant Description';
+                    ApplicationArea = All;
+                    Editable = false;
+                }
+
+                field(cantidadGastado; QtyGastado)
+                {
+                    Caption = 'Cantidad Gastada';
+                    ApplicationArea = All;
+                    Editable = false;
+                }
+
+                field(cantidadDisponible; GetCantidadDisponible())
+                {
+                    Caption = 'Cantidad Disponible';
+                    ApplicationArea = All;
+                    Editable = false;
+                }
+
+                field(estadoConsumo; GetEstadoConsumo())
+                {
+                    Caption = 'Estado Consumo';
+                    ApplicationArea = All;
+                    Editable = false;
+                }
+
+                field(esConsumido; EsConsumido)
+                {
+                    Caption = 'Es Consumido';
+                    ApplicationArea = All;
+                    Editable = false;
+                }
             }
         }
     }
 
     var
-        tmpRec: Record "DecompReadAPITmp" temporary;
-        decompLine: Record "GomJob Works Decomposed Lines";
-        jl: Record "Job Ledger Entry";
+        // Cachés por registro para minimizar llamadas (ligero en red y DB)
+        QtyGastado: Decimal;
+        VariantDesc: Text;
+        EsConsumido: Boolean;
+
+        JL: Record "Job Ledger Entry";
         ItemVariant: Record "Item Variant";
-
-
-
-    trigger OnOpenPage()
-    begin
-        BuildDecompReadAPITmp();
-    end;
-
-    trigger OnFindRecord(Which: Text): Boolean
-    begin
-        if tmpRec.Count = 0 then
-            BuildDecompReadAPITmp();
-        exit(false);
-    end;
 
     trigger OnAfterGetRecord()
     begin
-        if tmpRec.Count = 0 then
-            BuildDecompReadAPITmp();
+        // Precalcular una vez por registro para que los campos calculados no re-ejecuten consultas
+        QtyGastado := CalcQtyGastado();
+        VariantDesc := CalcVariantDesc();
+        EsConsumido := QtyGastado > 0;
     end;
 
-    // ...existing code...
-
-    local procedure BuildDecompReadAPITmp()
+    local procedure GetParentTaskTemp(): Text
     var
-        exists: Boolean;
-        parentTask: Text;
+        t: Text;
         dotPos: Integer;
     begin
-        tmpRec.DeleteAll();
-        // Presupuestadas
-        decompLine.SetRange(Type, decompLine.Type::Item);
-        if decompLine.FindSet() then
-            repeat
-                tmpRec.Init();
-                tmpRec.SystemId := decompLine.SystemId;
-                tmpRec.category := 'Presupuestado';
-                tmpRec."Works No." := decompLine."Works No.";
-                tmpRec."Task No." := decompLine."Task No.";
-                tmpRec."Description" := decompLine."Description";
-                tmpRec."Quantity" := decompLine."Quantity";
-                tmpRec."Job No." := decompLine."Job No.";
-                tmpRec."Unit of Measure" := decompLine."Unit of Measure";
-                tmpRec."Task Type" := Format(decompLine."Task Type");
-                tmpRec."Type" := Format(decompLine."Type");
-                tmpRec."No." := decompLine."No.";
-                tmpRec."Performance" := decompLine."Performance";
-                tmpRec."Variant Code" := decompLine."Variant Code";
-                // Parent Task
-                parentTask := Format(decompLine."Task No.");
-                dotPos := StrPos(parentTask, '.');
-                if dotPos > 0 then
-                    tmpRec.parentTaskTemp := CopyStr(parentTask, 1, dotPos - 1)
-                else
-                    tmpRec.parentTaskTemp := parentTask;
-                // VariantDesc
-                if (decompLine."No." <> '') and (decompLine."Variant Code" <> '') then
-                    if ItemVariant.Get(decompLine."No.", decompLine."Variant Code") then
-                        tmpRec.VariantDesc := ItemVariant.Description;
-                // Calcular QtyGastado
-                jl.Reset();
-                jl.SetRange("No.", decompLine."No.");
-                jl.SetRange("Location Code", decompLine."Works No.");
-                jl.SetRange("Job Task No.", decompLine."Task No.");
-                jl.SetRange("Job No.", decompLine."Job No.");
-                // Se elimina el filtro de solo positivas para considerar devoluciones (cantidades negativas)
-                jl.CalcSums(Quantity);
-                tmpRec.qtyGastado := jl.Quantity;
-                tmpRec.cantidadDisponible := decompLine."Quantity" - tmpRec.qtyGastado;
-                tmpRec.estadoConsumo := GetEstadoConsumo(decompLine."Performance", tmpRec.qtyGastado);
-                tmpRec.Insert();
-            until decompLine.Next() = 0;
-
-        // Extras (consumidos sin presupuestar)
-        jl.Reset();
-        jl.SetFilter(Quantity, '>%1', 0);
-        if jl.FindSet() then
-            repeat
-                // Buscar si existe en presupuestadas
-                decompLine.Reset();
-                decompLine.SetRange(Type, decompLine.Type::Item);
-                decompLine.SetRange("No.", jl."No.");
-                decompLine.SetRange("Works No.", jl."Location Code");
-                decompLine.SetRange("Task No.", jl."Job Task No.");
-                decompLine.SetRange("Job No.", jl."Job No.");
-                exists := decompLine.FindFirst();
-                if not exists then begin
-                    tmpRec.Init();
-                    tmpRec.SystemId := CreateGuid();
-                    tmpRec.category := 'Extra';
-                    tmpRec."Works No." := jl."Location Code";
-                    tmpRec."Task No." := jl."Job Task No.";
-                    tmpRec."Description" := jl."Description";
-                    tmpRec."Quantity" := 0;
-                    tmpRec."Job No." := jl."Job No.";
-                    tmpRec."Unit of Measure" := jl."Unit of Measure Code";
-                    tmpRec."Task Type" := '';
-                    tmpRec."Type" := 'Item';
-                    tmpRec."No." := jl."No.";
-                    tmpRec."Performance" := 0;
-                    tmpRec."Variant Code" := jl."Variant Code";
-                    tmpRec.parentTaskTemp := '';
-                    tmpRec.VariantDesc := '';
-                    tmpRec.qtyGastado := jl.Quantity;
-                    tmpRec.cantidadDisponible := -jl.Quantity;
-                    tmpRec.estadoConsumo := GetEstadoConsumo(0, jl.Quantity);
-                    tmpRec.Insert();
-                end;
-            until jl.Next() = 0;
+        t := Format(Rec."Task No.");
+        dotPos := StrPos(t, '.');
+        if dotPos > 0 then
+            exit(CopyStr(t, 1, dotPos - 1));
+        exit(t);
     end;
 
-    local procedure GetEstadoConsumo(performance: Decimal; qtyGastado: Decimal): Integer
+    local procedure CalcVariantDesc(): Text
     begin
-        if performance > qtyGastado then
-            exit(0);
-        if performance = qtyGastado then
-            exit(1);
-        if performance < qtyGastado then
-            exit(2);
-        exit(0);
+        if (Rec."No." = '') or (Rec."Variant Code" = '') then
+            exit('');
+        if ItemVariant.Get(Rec."No.", Rec."Variant Code") then
+            exit(ItemVariant.Description);
+        exit('');
     end;
+
+    local procedure CalcQtyGastado(): Decimal
+    var
+        total: Decimal;
+    begin
+        // Filtros solicitados:
+        // Item No. = No.
+        // Location Code = Works No.   (ajusta si en tu modelo "Works No." no es ubicación)
+        // Job Task No. = Task No.
+        // Solo positivas (interpretado como Quantity > 0 en Job Ledger Entry)
+        JL.Reset();
+        if Rec."No." <> '' then
+            JL.SetRange("No.", Rec."No.");
+
+        if Rec."Works No." <> '' then
+            JL.SetRange("Location Code", Rec."Works No.");
+
+        if Rec."Task No." <> '' then
+            JL.SetRange("Job Task No.", Rec."Task No.");
+
+        // Si también quieres acotar por proyecto: (descomenta si corresponde a tu modelo)
+        if Rec."Job No." <> '' then
+            JL.SetRange("Job No.", Rec."Job No.");
+
+        JL.SetFilter(Quantity, '>%1', 0); // "positivas"
+
+        JL.CalcSums(Quantity);
+        total := JL.Quantity;
+        exit(total);
+    end;
+
+    local procedure GetCantidadDisponible(): Decimal
+    begin
+        exit(Rec."Quantity" - QtyGastado);
+    end;
+
+    local procedure GetEstadoConsumo(): Integer
+    begin
+        if Rec."Performance" > QtyGastado then
+            exit(0);
+
+        if Rec."Performance" = QtyGastado then
+            exit(1);
+
+        if Rec."Performance" < QtyGastado then
+            exit(2);
+
+        exit(0); // fallback improbable, pero evita warnings del compilador
+    end;
+
 }

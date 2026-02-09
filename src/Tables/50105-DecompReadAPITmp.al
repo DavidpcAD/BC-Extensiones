@@ -23,6 +23,7 @@ table 50105 "DecompReadAPITmp"
         field(16; estadoConsumo; Integer) { DataClassification = ToBeClassified; }
         field(17; VariantDesc; Text[100]) { DataClassification = ToBeClassified; }
         field(18; parentTaskTemp; Text[20]) { DataClassification = ToBeClassified; }
+        field(19; EsConsumido; Boolean) { DataClassification = ToBeClassified; }
     }
 
     keys

@@ -7,6 +7,8 @@ page 50106 "ConsumidoObra"
     EntityName = 'consumidoObra';
     EntitySetName = 'consumidoObraSet';
     SourceTable = "DecompReadAPITmp";
+    SourceTableTemporary = true;
+    ODataKeyFields = SystemId;
     InsertAllowed = false;
     ModifyAllowed = false;
     DeleteAllowed = false;
@@ -18,6 +20,7 @@ page 50106 "ConsumidoObra"
         {
             repeater(General)
             {
+                field(systemId; Rec.SystemId) { Caption = 'System ID'; ApplicationArea = All; }
                 field(category; Rec.category) { Caption = 'Category'; ApplicationArea = All; }
                 field(worksNo; Rec."Works No.") { ApplicationArea = All; }
                 field(taskNo; Rec."Task No.") { ApplicationArea = All; }
@@ -35,12 +38,12 @@ page 50106 "ConsumidoObra"
                 field(cantidadGastado; Rec.qtyGastado) { Caption = 'Cantidad Gastada'; ApplicationArea = All; Editable = false; }
                 field(cantidadDisponible; Rec.cantidadDisponible) { Caption = 'Cantidad Disponible'; ApplicationArea = All; Editable = false; }
                 field(estadoConsumo; Rec.estadoConsumo) { Caption = 'Estado Consumo'; ApplicationArea = All; Editable = false; }
+                field(esConsumido; Rec.EsConsumido) { Caption = 'Es Consumido'; ApplicationArea = All; Editable = false; }
             }
         }
     }
 
     var
-        tmpRec: Record "DecompReadAPITmp" temporary;
         decompLine: Record "GomJob Works Decomposed Lines";
         jl: Record "Job Ledger Entry";
         ItemVariant: Record "Item Variant";
@@ -50,55 +53,42 @@ page 50106 "ConsumidoObra"
         BuildDecompReadAPITmp();
     end;
 
-    trigger OnFindRecord(Which: Text): Boolean
-    begin
-        if tmpRec.Count = 0 then
-            BuildDecompReadAPITmp();
-        exit(false);
-    end;
-
-    trigger OnAfterGetRecord()
-    begin
-        if tmpRec.Count = 0 then
-            BuildDecompReadAPITmp();
-    end;
-
     local procedure BuildDecompReadAPITmp()
     var
         exists: Boolean;
         parentTask: Text;
         dotPos: Integer;
     begin
-        tmpRec.DeleteAll();
+        Rec.DeleteAll();
         // Presupuestadas
         decompLine.SetRange(Type, decompLine.Type::Item);
         if decompLine.FindSet() then
             repeat
-                tmpRec.Init();
-                tmpRec.SystemId := decompLine.SystemId;
-                tmpRec.category := 'Presupuestado';
-                tmpRec."Works No." := decompLine."Works No.";
-                tmpRec."Task No." := decompLine."Task No.";
-                tmpRec."Description" := decompLine."Description";
-                tmpRec."Quantity" := decompLine."Quantity";
-                tmpRec."Job No." := decompLine."Job No.";
-                tmpRec."Unit of Measure" := decompLine."Unit of Measure";
-                tmpRec."Task Type" := Format(decompLine."Task Type");
-                tmpRec."Type" := Format(decompLine."Type");
-                tmpRec."No." := decompLine."No.";
-                tmpRec."Performance" := decompLine."Performance";
-                tmpRec."Variant Code" := decompLine."Variant Code";
+                Rec.Init();
+                Rec.SystemId := decompLine.SystemId;
+                Rec.category := 'Presupuestado';
+                Rec."Works No." := decompLine."Works No.";
+                Rec."Task No." := decompLine."Task No.";
+                Rec."Description" := decompLine."Description";
+                Rec."Quantity" := decompLine."Quantity";
+                Rec."Job No." := decompLine."Job No.";
+                Rec."Unit of Measure" := decompLine."Unit of Measure";
+                Rec."Task Type" := Format(decompLine."Task Type");
+                Rec."Type" := Format(decompLine."Type");
+                Rec."No." := decompLine."No.";
+                Rec."Performance" := decompLine."Performance";
+                Rec."Variant Code" := decompLine."Variant Code";
                 // Parent Task
                 parentTask := Format(decompLine."Task No.");
                 dotPos := StrPos(parentTask, '.');
                 if dotPos > 0 then
-                    tmpRec.parentTaskTemp := CopyStr(parentTask, 1, dotPos - 1)
+                    Rec.parentTaskTemp := CopyStr(parentTask, 1, dotPos - 1)
                 else
-                    tmpRec.parentTaskTemp := parentTask;
+                    Rec.parentTaskTemp := parentTask;
                 // VariantDesc
                 if (decompLine."No." <> '') and (decompLine."Variant Code" <> '') then
                     if ItemVariant.Get(decompLine."No.", decompLine."Variant Code") then
-                        tmpRec.VariantDesc := ItemVariant.Description;
+                        Rec.VariantDesc := ItemVariant.Description;
                 // Calcular QtyGastado
                 jl.Reset();
                 jl.SetRange("No.", decompLine."No.");
@@ -106,10 +96,11 @@ page 50106 "ConsumidoObra"
                 jl.SetRange("Job Task No.", decompLine."Task No.");
                 jl.SetRange("Job No.", decompLine."Job No.");
                 jl.CalcSums(Quantity);
-                tmpRec.qtyGastado := jl.Quantity;
-                tmpRec.cantidadDisponible := decompLine."Quantity" - tmpRec.qtyGastado;
-                tmpRec.estadoConsumo := GetEstadoConsumo(decompLine."Performance", tmpRec.qtyGastado);
-                tmpRec.Insert();
+                Rec.qtyGastado := jl.Quantity;
+                Rec.cantidadDisponible := decompLine."Quantity" - Rec.qtyGastado;
+                Rec.estadoConsumo := GetEstadoConsumo(decompLine."Performance", Rec.qtyGastado);
+                Rec.EsConsumido := Rec.qtyGastado > 0;
+                Rec.Insert();
             until decompLine.Next() = 0;
 
         // Extras (consumidos sin presupuestar)
@@ -126,32 +117,35 @@ page 50106 "ConsumidoObra"
                 decompLine.SetRange("Job No.", jl."Job No.");
                 exists := decompLine.FindFirst();
                 if not exists then begin
-                    tmpRec.Init();
-                    tmpRec.SystemId := CreateGuid();
-                    tmpRec.category := 'Extra';
-                    tmpRec."Works No." := jl."Location Code";
-                    tmpRec."Task No." := jl."Job Task No.";
-                    tmpRec."Description" := jl."Description";
-                    tmpRec."Quantity" := 0;
-                    tmpRec."Job No." := jl."Job No.";
-                    tmpRec."Unit of Measure" := jl."Unit of Measure Code";
-                    tmpRec."Task Type" := '';
-                    tmpRec."Type" := 'Item';
-                    tmpRec."No." := jl."No.";
-                    tmpRec."Performance" := 0;
-                    tmpRec."Variant Code" := jl."Variant Code";
-                    tmpRec.parentTaskTemp := '';
-                    tmpRec.VariantDesc := '';
-                    tmpRec.qtyGastado := jl.Quantity;
-                    tmpRec.cantidadDisponible := -jl.Quantity;
-                    tmpRec.estadoConsumo := GetEstadoConsumo(0, jl.Quantity);
-                    tmpRec.Insert();
+                    Rec.Init();
+                    Rec.SystemId := CreateGuid();
+                    Rec.category := 'Extra';
+                    Rec."Works No." := jl."Location Code";
+                    Rec."Task No." := jl."Job Task No.";
+                    Rec."Description" := jl."Description";
+                    Rec."Quantity" := 0;
+                    Rec."Job No." := jl."Job No.";
+                    Rec."Unit of Measure" := jl."Unit of Measure Code";
+                    Rec."Task Type" := '';
+                    Rec."Type" := 'Item';
+                    Rec."No." := jl."No.";
+                    Rec."Performance" := 0;
+                    Rec."Variant Code" := jl."Variant Code";
+                    Rec.parentTaskTemp := '';
+                    Rec.VariantDesc := '';
+                    Rec.qtyGastado := jl.Quantity;
+                    Rec.cantidadDisponible := -jl.Quantity;
+                    Rec.estadoConsumo := GetEstadoConsumo(0, jl.Quantity);
+                    Rec.EsConsumido := Rec.qtyGastado > 0;
+                    Rec.Insert();
                 end;
             until jl.Next() = 0;
     end;
 
     local procedure GetEstadoConsumo(performance: Decimal; qtyGastado: Decimal): Integer
     begin
+        if (performance = 0) and (qtyGastado = 0) then
+            exit(3);
         if performance > qtyGastado then
             exit(0);
         if performance = qtyGastado then

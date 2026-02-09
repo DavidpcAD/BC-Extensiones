@@ -13,6 +13,7 @@ permissionset 50100 "Adelante API RIMD"
         tabledata "GomJob Posted Prod. Buffer" = RIMD,
         tabledata "GomJob Posted Works Prod. Line" = RIMD,
         tabledata "GomJob Works Decomposed Lines" = RIMD,
+        tabledata "DecompReadAPITmp" = RIMD,
         tabledata "Item Journal Template" = RIMD,   //
         tabledata "Item Journal Batch" = RIMD,
         tabledata "Item Journal Line" = RIMD,
@@ -46,6 +47,7 @@ permissionset 50100 "Adelante API RIMD"
         page "GJW Item Journal Batches API" = X,
         page "GJW Item Journal Lines API" = X,
         page "GJW Works Decomp OnSite" = X,
+        page "ConsumidoObra" = X,
         page "GJW Works Version" = X,
         page "GJW WorksDecompImportV2 API" = X,
         page "GJW ItemAvailBuffer API" = X,
