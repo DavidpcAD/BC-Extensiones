@@ -63,5 +63,12 @@ tableextension 50140 "GJW Job Ext" extends Job
                     until GomJobWorks.Next() = 0;
             end;
         }
+
+        field(50300; "Area Prorrateada"; Decimal)
+        {
+            Caption = 'Area Prorrateada';
+            DataClassification = CustomerContent;
+            DecimalPlaces = 2 : 2;
+        }
     }
 }

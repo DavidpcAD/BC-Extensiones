@@ -18,10 +18,8 @@ codeunit 50186 "GJW Material Consumption"
         TasksProcessed: Integer;
 
         // JSON
-        Res: JsonObject;
         Arr: JsonArray;
         Row: JsonObject;
-        JsonResultsTxt: Text;
 
         DocNo: Code[20];
         GuidTxt: Text;
@@ -74,6 +72,9 @@ codeunit 50186 "GJW Material Consumption"
                     GomJobWarehouseQty.Reset();
                     GomJobWarehouseQty.SetRange("Item Ledger Entry No.", EntryNo);
                     GomJobWarehouseQty.SetRange("Job No.", JobNo);
+                    // Si se especifica una tarea destino desde Power Apps, filtrar por esa tarea
+                    if JobTaskNo <> '' then
+                        GomJobWarehouseQty.SetRange("Job Task No.", JobTaskNo);
 
                     if GomJobWarehouseQty.FindSet() then begin
                         repeat
@@ -140,14 +141,13 @@ codeunit 50186 "GJW Material Consumption"
                                         NewJobEntryNo := JobLedgEntry."Entry No.";
                                     end;
 
-                                    // Agregar al JSON results
+                                    // Agregar al JSON results con MISMA estructura que postCommands
                                     Clear(Row);
                                     Row.Add('itemNo', ItemLedgerEntry."Item No.");
-                                    Row.Add('jobTaskNo', JobJnlLine."Job Task No.");
-                                    Row.Add('entryNoALM', ItemLedgerEntry."Entry No."); // original almacén
-                                    Row.Add('jobEntryNo', NewJobEntryNo);
-                                    Row.Add('ledgerEntryNo', NewLedgerEntryNo); // 🔥 este es el 1018 que querés
-                                    Row.Add('quantity', GomJobWarehouseQty.Quantity);
+                                    Row.Add('entryNo', NewLedgerEntryNo); // usar Ledger Entry No. (1018) como entryNo
+                                    Row.Add('locationCode', ItemLedgerEntry."Location Code");
+                                    Row.Add('quantity', Format(JobJnlLine.Quantity, 0, 9));
+                                    Row.Add('documentNo', DocNo);
                                     Arr.Add(Row);
 
                                     TasksProcessed += 1;
@@ -160,8 +160,12 @@ codeunit 50186 "GJW Material Consumption"
                         until GomJobWarehouseQty.Next() = 0;
 
                         ProcessedCount += 1;
-                    end else
-                        Error('No se encontraron tareas asignadas para el material %1 (Entry %2)', ItemLedgerEntry."Item No.", EntryNo);
+                    end else begin
+                        if JobTaskNo <> '' then
+                            Error('No se encontraron tareas asignadas para el material %1 (Entry %2) en la tarea %3', ItemLedgerEntry."Item No.", EntryNo, JobTaskNo)
+                        else
+                            Error('No se encontraron tareas asignadas para el material %1 (Entry %2)', ItemLedgerEntry."Item No.", EntryNo);
+                    end;
                 end else
                     Error('No se encontró el Item Ledger Entry %1', EntryNo);
             end;
@@ -170,19 +174,7 @@ codeunit 50186 "GJW Material Consumption"
         if ProcessedCount = 0 then
             Error('No se procesó ningún material');
 
-        // Empaquetar respuesta estilo postCommands
-        Clear(Res);
-        Res.Add('successMessage',
-            StrSubstNo('✓ Se consumieron %1 materiales distribuidos en %2 tareas (Cantidad total: %3) del proyecto %4',
-                ProcessedCount, TasksProcessed, TotalQuantity, JobNo)
-        );
-        Res.Add('linesPosted', TasksProcessed);
-        Res.Add('documentNo', DocNo); // para debug y trazabilidad
-
-        // jsonResults como texto (igual que tu postCommands)
-        Arr.WriteTo(JsonResultsTxt);
-        Res.Add('jsonResults', JsonResultsTxt);
-
-        exit(Format(Res));
+        // Devolver solo jsonResults como arreglo (texto JSON) para Power Apps
+        exit(Format(Arr));
     end;
 }
