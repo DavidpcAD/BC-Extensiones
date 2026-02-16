@@ -171,6 +171,7 @@ codeunit 50186 "GJW Material Consumption"
             end;
         end;
 
+
         if ProcessedCount = 0 then
             Error('No se procesó ningún material');
 

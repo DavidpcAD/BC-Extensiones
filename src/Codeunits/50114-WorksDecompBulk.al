@@ -16,6 +16,12 @@ codeunit 50114 "GJW WorksDecomp Bulk"
         DelCount: Integer;
         ErrorCount: Integer;
 
+        ErrNonObj: Integer;
+        ErrWorksNoMissing: Integer;
+        ErrIdMissing: Integer;
+        ErrIdNotFound: Integer;
+        ErrDeleteFailed: Integer;
+
         WorksNo: Code[20];
         LineNo: Integer;
         TaskNo: Code[50];
@@ -41,6 +47,7 @@ codeunit 50114 "GJW WorksDecomp Bulk"
                     Clear(LastError);
                     if not Token.IsObject() then begin
                         ErrorCount += 1;
+                        ErrNonObj += 1;
                     end else begin
 
                         Obj := Token.AsObject();
@@ -77,8 +84,10 @@ codeunit 50114 "GJW WorksDecomp Bulk"
                                 Commit(); // ⚡ Commit después de cada inserción exitosa
                             end else
                                 ErrorCount += 1;
-                        end else
+                        end else begin
                             ErrorCount += 1;
+                            ErrWorksNoMissing += 1;
+                        end;
                     end;
                 end;
             end;
@@ -90,6 +99,7 @@ codeunit 50114 "GJW WorksDecomp Bulk"
                 foreach Token in Arr do begin
                     if not Token.IsObject() then begin
                         ErrorCount += 1;
+                        ErrNonObj += 1;
                     end else begin
                         Obj := Token.AsObject();
 
@@ -116,8 +126,10 @@ codeunit 50114 "GJW WorksDecomp Bulk"
 
                         if not HasSystemId then begin
                             ErrorCount += 1;
+                            ErrIdMissing += 1;
                         end else if not WorkLine.GetBySystemId(SystemIdGuid) then begin
                             ErrorCount += 1;
+                            ErrIdNotFound += 1;
                         end else begin
 
                             if Obj.Get('worksNo', Val) and (not Val.AsValue().IsNull()) then WorksNo := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(WorksNo));
@@ -156,8 +168,10 @@ codeunit 50114 "GJW WorksDecomp Bulk"
                                 if Existing.Delete(true) then begin
                                     DelCount += 1;
                                     Commit(); // ⚡ Commit después de cada eliminación
-                                end else
+                                end else begin
                                     ErrorCount += 1;
+                                    ErrDeleteFailed += 1;
+                                end;
                             end;
                     end;
                 end;
@@ -170,7 +184,14 @@ codeunit 50114 "GJW WorksDecomp Bulk"
                 Format(InsCount) + ' insertados, ' +
                 Format(UpdCount) + ' actualizados, ' +
                 Format(DelCount) + ' eliminados. ⚠️ ' +
-                Format(ErrorCount) + ' errores.'
+                Format(ErrorCount) + ' errores ' +
+                '[' +
+                'nonObj=' + Format(ErrNonObj) + ', ' +
+                'worksNo=' + Format(ErrWorksNoMissing) + ', ' +
+                'idMissing=' + Format(ErrIdMissing) + ', ' +
+                'idNotFound=' + Format(ErrIdNotFound) + ', ' +
+                'deleteFail=' + Format(ErrDeleteFailed) +
+                ']'
             )
         else
             exit(

@@ -4,11 +4,11 @@ pageextension 50132 "GJW Works Decomp Page Ext" extends "GomJob Works Decomposed
     {
         addafter(Description)
         {
-            field("ID Encargado Text"; Rec."ID Encargado Text")
+            field("ID Visibles Text"; Rec."ID Visibles Text")
             {
                 ApplicationArea = All;
-                Caption = 'ID Encargado';
-                ToolTip = 'Identificador del encargado responsable de esta línea';
+                Caption = 'ID Visibles';
+                ToolTip = 'Identificador visible asociado a esta línea';
                 Visible = true;
                 Enabled = true;
             }

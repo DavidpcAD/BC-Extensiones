@@ -31,6 +31,7 @@ permissionset 50100 "Adelante API RIMD"
         tabledata "Job Journal Template" = RIMD,
         tabledata "GJW Warehouse Quantity Buffer" = RIMD,
         tabledata "GJW Post Job Journal Cmd" = RIMD,
+        tabledata "GJW Bulk Buffer" = RIMD,
 
 
 

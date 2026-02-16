@@ -15,5 +15,20 @@ tableextension 50130 "GJW Works Decomp Line Ext" extends "GomJob Works Decompose
             Caption = 'ID Encargado';
             DataClassification = CustomerContent;
         }
+
+        // Nuevo par de campos: ID Visibles (igual patrón que Encargado)
+        field(50300; "ID Visibles"; Integer)
+        {
+            Caption = 'ID Visibles (Obsoleto)';
+            DataClassification = CustomerContent;
+            ObsoleteState = Pending;
+            ObsoleteReason = 'Replaced by field 50350 ID Visibles Text';
+        }
+
+        field(50350; "ID Visibles Text"; Text[100])
+        {
+            Caption = 'ID Visibles';
+            DataClassification = CustomerContent;
+        }
     }
 }
