@@ -4,10 +4,10 @@ pageextension 50145 "GJW Works Sub 2 Ext" extends "GomJob Works Sub 2"
     {
         addafter(Description)
         {
-            field("ID Visibles Text"; Rec."ID Visibles Text")
+            field("IDVisibles"; Rec."IDVisibles")
             {
                 ApplicationArea = All;
-                Caption = 'ID Visibles';
+                Caption = 'IDVisibles';
                 ToolTip = 'Identificador visible asociado a esta línea';
                 Visible = true;
                 Enabled = true;

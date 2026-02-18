@@ -27,7 +27,15 @@ tableextension 50129 "GJW Works Line Ext" extends "GomJob Works Line"
 
         field(50350; "ID Visibles Text"; Text[100])
         {
-            Caption = 'ID Visibles';
+            Caption = 'ID Visibles Text';
+            DataClassification = CustomerContent;
+            ObsoleteState = Pending;
+            ObsoleteReason = 'Replaced by field 50400 ID Visibles';
+        }
+
+        field(50400; "IDVisibles"; Text[100])
+        {
+            Caption = 'IDVisibles';
             DataClassification = CustomerContent;
         }
     }

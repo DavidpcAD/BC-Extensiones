@@ -4,6 +4,9 @@
 > **Publisher**: Adelante Desarrollos  
 > **Fecha última actualización**: 26 de enero de 2026
 
+
+---
+
 ---
 
 ## 📑 Índice
@@ -16,6 +19,9 @@
 6. [Extensiones de Páginas](#extensiones-de-páginas)
 7. [Tablas Personalizadas](#tablas-personalizadas)
 8. [Permisos](#permisos)
+
+---
+
 9. [Integración con Power Apps](#integración-con-power-apps)
 10. [Casos de Uso](#casos-de-uso)
 11. [Guía de Despliegue](#guía-de-despliegue)
@@ -25,6 +31,9 @@
 ## 🎯 Descripción General
 
 Esta extensión para Microsoft Dynamics 365 Business Central proporciona APIs REST y funcionalidades automatizadas para:
+
+---
+
 
 - **Gestión de presupuestos y obras** (Works/Projects)
 - **Control de inventario y almacenes** (Warehouse Management)
@@ -66,6 +75,9 @@ BusinessCentral-Extensions/
 
 ### Grupos de API
 
+---
+
+
 Las APIs están organizadas en grupos funcionales:
 
 | Grupo | Propósito | Endpoint Base |
@@ -78,12 +90,17 @@ Las APIs están organizadas en grupos funcionales:
 
 ---
 
+
+---
+
 ## 📡 APIs Disponibles
 
 ### 🏗️ **CONSTRUCTION - Obras y Presupuestos**
 
 #### 1. Works API (50110)
 **Endpoint**: `/works`  
+---
+
 **Tabla**: `GomJob Works`  
 **Operaciones**: CRUD completo
 
@@ -91,6 +108,8 @@ Gestiona las obras/presupuestos del sistema.
 
 **Campos principales**:
 - `no` - Número de obra
+---
+
 - `description` - Descripción
 - `idEncargado` - ID del encargado
 - `quantityLines` - Cantidad de líneas
@@ -100,6 +119,8 @@ Gestiona las obras/presupuestos del sistema.
 GET /api/adelante/construction/v1.0/works
 GET /api/adelante/construction/v1.0/works('{id}')
 POST /api/adelante/construction/v1.0/works
+---
+
 PATCH /api/adelante/construction/v1.0/works('{id}')
 ```
 
@@ -107,6 +128,8 @@ PATCH /api/adelante/construction/v1.0/works('{id}')
 **Endpoint**: `/workLines`  
 **Tabla**: `GomJob Works Line`  
 **Operaciones**: CRUD completo
+
+---
 
 Líneas de detalle de las obras.
 
@@ -117,12 +140,16 @@ Líneas de detalle de las obras.
 - `quantity` - Cantidad
 - `unitAmount` - Precio unitario
 - `lineAmount` - Importe total
+---
+
 
 #### 3. Work Lines Bulk API (50127, 50190)
 **Endpoint**: `/workLinesBulks`  
 **Operaciones**: Creación masiva de líneas
 
 Permite crear múltiples líneas de obra en una sola petición.
+---
+
 
 **Ejemplo**:
 ```json
@@ -167,6 +194,8 @@ Creación y gestión de líneas de diario de inventario.
 ```json
 {
     "journalTemplateName": "PRODUCT",
+---
+
     "journalBatchName": "DEFAULT",
     "entryType": "Positive Adjmt.",
     "itemNo": "M01-0147",
@@ -176,6 +205,8 @@ Creación y gestión de líneas de diario de inventario.
 ```
 
 #### 7. Item Journal Batches API (50102)
+---
+
 **Endpoint**: `/itemJournalBatches`  
 **Tabla**: `Item Journal Batch`
 
@@ -186,6 +217,8 @@ Gestión de lotes de diario.
 **Tabla**: `Item Journal Template`
 
 Gestión de plantillas de diario.
+---
+
 
 #### 9. Item Ledger Entry API (50114)
 **Endpoint**: `/itemLedgerEntriesWithTasks`  
