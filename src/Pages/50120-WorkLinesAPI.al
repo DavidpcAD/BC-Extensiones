@@ -53,6 +53,7 @@ page 50120 "GJWWorkLines"
                 field(lineNo; Rec."Line No.") { Caption = 'Line No.'; }
                 field(quantityToProduce; Rec."Quantity to Produce") { Caption = 'Quantity to Produce'; }
                 field(longDescription; Rec."Long Description") { Caption = 'Long Description'; }
+                field(idVisibles; Rec."ID Visibles Text") { Caption = 'ID Visibles Text'; }
             }
         }
     }

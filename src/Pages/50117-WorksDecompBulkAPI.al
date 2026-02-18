@@ -7,6 +7,11 @@ page 50117 "GJW WorksDecomp Bulk API"
     EntityName = 'workDecompBulk';
     EntitySetName = 'workDecompBulks';
 
+    // Obsoleto: usar Codeunit 50114 Import(jsonNuevos, jsonEditados, jsonEliminados)
+    ObsoleteState = Pending;
+    ObsoleteReason = 'Reemplazado por ServiceEnabled Codeunit 50114 (Import) sin chunks';
+    ObsoleteTag = '2026-02-16';
+
     // Usar buffer temporal propio para transportar JSON
     SourceTable = "GJW Bulk Buffer";
     SourceTableTemporary = true;
@@ -84,10 +89,10 @@ page 50117 "GJW WorksDecomp Bulk API"
 
     trigger OnInsertRecord(BelowxRec: Boolean): Boolean
     begin
+        Rec.resultado := 'API obsoleta: use Codeunit 50114 Import(jsonNuevos,jsonEditados,jsonEliminados).';
+        // Mantener compatibilidad si aún se usa ejecutar=true
         if Rec.ejecutar then
-            RunBulk()
-        else
-            Rec.resultado := 'Sin ejecutar: establecer ejecutar=true.';
+            RunBulk();
 
         exit(true);
     end;

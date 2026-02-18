@@ -1,0 +1,115 @@
+{
+"openapi": "3.0.1",
+"info": {
+"title": "WorksDecompBulk Import (ServiceEnabled)",
+"version": "1.0.0",
+"description": "Invoca el Codeunit 50114 Import(jsonNuevos, jsonEditados, jsonEliminados) sin chunks"
+},
+"servers": [
+{
+    "url": "https://api.businesscentral.dynamics.com/v2.0/{tenant}/{environment}",
+    "variables": {
+    "tenant": { "default": "YOUR_TENANT_ID" },
+    "environment": { "default": "Production" }
+    }
+}
+],
+"paths": {
+"/ODataV4/Company('{company}')/{serviceName}.Import": {
+    "post": {
+    "operationId": "ImportWorksDecompBulk",
+    "summary": "Importa líneas descompuestas en bloque",
+    "parameters": [
+        {
+        "name": "company",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "Nombre de la empresa (exacto como aparece en BC)"
+        },
+        {
+        "name": "serviceName",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" },
+        "description": "Nombre del servicio publicado para el Codeunit 50114 (p.ej., WorksDecompImport)"
+        }
+    ],
+    "requestBody": {
+        "required": true,
+        "content": {
+        "application/json": {
+            "schema": {
+            "type": "object",
+            "properties": {
+                "jsonNuevos": {
+                "type": "string",
+                "maxLength": 100000,
+                "description": "JSON de nuevos registros (array de objetos)"
+                },
+                "jsonEditados": {
+                "type": "string",
+                "maxLength": 100000,
+                "description": "JSON de registros editados (array de objetos)"
+                },
+                "jsonEliminados": {
+                "type": "string",
+                "maxLength": 100000,
+                "description": "JSON de registros eliminados (array de objetos con id)"
+                }
+            },
+            "required": ["jsonNuevos", "jsonEditados", "jsonEliminados"]
+            }
+        }
+        }
+    },
+    "responses": {
+        "200": {
+        "description": "Texto de resultado con conteos",
+        "content": {
+            "application/json": {
+            "schema": {
+                "type": "object",
+                "properties": {
+                "value": { "type": "string" }
+                }
+            }
+            }
+        }
+        }
+    },
+    "x-ms-visibility": "important",
+    "x-ms-examples": {
+        "Ejemplo": {
+        "parameters": {
+            "company": "CRONUS ES",
+            "serviceName": "WorksDecompImport"
+        },
+        "requestBody": {
+            "jsonNuevos": "[]",
+            "jsonEditados": "[]",
+            "jsonEliminados": "[]"
+        }
+        }
+    }
+    }
+}
+},
+"components": {
+"securitySchemes": {
+    "oauth2": {
+    "type": "oauth2",
+    "flows": {
+        "authorizationCode": {
+        "authorizationUrl": "https://login.microsoftonline.com/common/oauth2/authorize",
+        "tokenUrl": "https://login.microsoftonline.com/common/oauth2/token",
+        "scopes": {
+            "https://api.businesscentral.dynamics.com/.default": "Acceso a Business Central"
+        }
+        }
+    }
+    }
+}
+},
+"security": [ { "oauth2": ["https://api.businesscentral.dynamics.com/.default"] } ]
+}

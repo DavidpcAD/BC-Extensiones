@@ -32,6 +32,7 @@ codeunit 50124 "GJW WorkLines Bulk"
         UnitOfMeasure: Code[10];
         CodeOrder: Code[50];
         IdEncargado: Text[100];
+        IdVisiblesTxt: Text[100];
         ReStudy: Boolean;
     begin
         // ✅ SOLO INSERTAR NUEVOS
@@ -56,6 +57,7 @@ codeunit 50124 "GJW WorkLines Bulk"
                         Clear(UnitOfMeasure);
                         Clear(CodeOrder);
                         Clear(IdEncargado);
+                        Clear(IdVisiblesTxt);
                         ReStudy := false;
 
                         // Leer JSON
@@ -101,6 +103,10 @@ codeunit 50124 "GJW WorkLines Bulk"
                         if Obj.Get('idEncargado', Val) and (not Val.AsValue().IsNull()) then
                             IdEncargado := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(IdEncargado));
 
+                        // Nuevo: IDs visibles (texto con lista separada por comas)
+                        if Obj.Get('IDVisibles', Val) and (not Val.AsValue().IsNull()) then
+                            IdVisiblesTxt := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(IdVisiblesTxt));
+
                         if Obj.Get('reStudy', Val) and (not Val.AsValue().IsNull()) then
                             ReStudy := Val.AsValue().AsBoolean();
 
@@ -117,7 +123,7 @@ codeunit 50124 "GJW WorkLines Bulk"
                             // 🚀 INSERTAR
                             if InsertNewLine(WorkLine, WorksNo, VersionCode, LineNo, LineTypeTxt, TaskTypeTxt,
                                 TaskNo, Description, Quantity, UnitAmount, LineAmount, QuantityToProduce,
-                                UnitOfMeasure, CodeOrder, IdEncargado, ReStudy) then begin
+                                UnitOfMeasure, CodeOrder, IdEncargado, IdVisiblesTxt, ReStudy) then begin
                                 InsCount += 1;
                                 Commit();
                             end else
@@ -140,7 +146,7 @@ codeunit 50124 "GJW WorkLines Bulk"
         WorksNo: Code[20]; VersionCode: Code[20]; LineNo: Integer; LineTypeTxt: Text; TaskTypeTxt: Text;
         TaskNo: Code[50]; Description: Text[250]; Quantity: Decimal; UnitAmount: Decimal; LineAmount: Decimal;
         QuantityToProduce: Decimal; UnitOfMeasure: Code[10]; CodeOrder: Code[50]; IdEncargado: Text[100];
-        ReStudy: Boolean): Boolean
+        IdVisiblesTxt: Text[100]; ReStudy: Boolean): Boolean
     var
         LineTypeEnum: Enum "GomJob Works Line Type";
         TaskTypeOpt: Option Posting,Heading,Total;
@@ -156,6 +162,12 @@ codeunit 50124 "GJW WorkLines Bulk"
         RecLine."Line No." := LineNo;
 
         // ✅ VALIDAR Line Type
+        // Normalizar variantes recibidas desde Power Apps
+        case UpperCase(LineTypeTxt) of
+            'INDIRECT_X0020_COST':
+                LineTypeTxt := 'Indirect Cost';
+        end;
+
         if not Evaluate(LineTypeEnum, LineTypeTxt) then
             exit(false);
         RecLine."Line Type" := LineTypeEnum;
@@ -175,6 +187,7 @@ codeunit 50124 "GJW WorkLines Bulk"
         RecLine."Unit of Measure" := UnitOfMeasure;
         RecLine."Code Order" := CodeOrder;
         RecLine."ID Encargado Text" := IdEncargado;
+        RecLine."ID Visibles Text" := IdVisiblesTxt;
         RecLine."Re-Study" := ReStudy;
 
         exit(RecLine.Insert(true));
