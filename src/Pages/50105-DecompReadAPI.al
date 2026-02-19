@@ -139,19 +139,19 @@ page 50105 "GJW Works Decomp OnSite"
         // Solo positivas (interpretado como Quantity > 0 en Job Ledger Entry)
         JL.Reset();
         if Rec."No." <> '' then
-            JL.SetRange("No.", Rec."No.");
+            JL.SetRange("No.", Rec."No."); // Filtro por Item No.
 
         if Rec."Works No." <> '' then
-            JL.SetRange("Location Code", Rec."Works No.");
+            JL.SetRange("Location Code", Rec."Works No."); // Filtro por Works No. en Location Code (ajusta si tu modelo es diferente)
 
         if Rec."Task No." <> '' then
-            JL.SetRange("Job Task No.", Rec."Task No.");
+            JL.SetRange("Job Task No.", Rec."Task No."); // Filtro por Task No. en Job Task No.
 
         // Si también quieres acotar por proyecto: (descomenta si corresponde a tu modelo)
         if Rec."Job No." <> '' then
             JL.SetRange("Job No.", Rec."Job No.");
 
-        JL.SetFilter(Quantity, '>%1', 0); // "positivas"
+        //        JL.SetFilter(Quantity, '>%1', 0); // Solo cantidades positivas (ajusta si tu definición de "gastado" es diferente)
 
         JL.CalcSums(Quantity);
         total := JL.Quantity;

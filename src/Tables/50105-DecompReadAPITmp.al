@@ -29,5 +29,5 @@ table 50105 "DecompReadAPITmp"
     keys
     {
         key(PK; SystemId) { Clustered = true; }
-    }
+    } //  No se necesitan índices adicionales por la naturaleza de uso de la tabla (lectura secuencial para API)
 }
