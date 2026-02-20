@@ -46,77 +46,127 @@ page 50106 "ConsumidoObra"
     var
         decompLine: Record "GomJob Works Decomposed Lines";
         jl: Record "Job Ledger Entry";
-        ItemVariant: Record "Item Variant";
+        iv: Record "Item Variant";
+        JLSums: Dictionary of [Text, Decimal];
+        VariantDescs: Dictionary of [Text, Text];
+        PresupKeys: Dictionary of [Text, Boolean];
+        tmpKey: Text;
+        tmpQty: Decimal;
+        tmpText: Text;
+        tmpParentTask: Text;
+        tmpDotPos: Integer;
 
     trigger OnOpenPage()
     begin
         BuildDecompReadAPITmp();
     end;
 
-    local procedure BuildDecompReadAPITmp()
-    var
-        exists: Boolean;
-        parentTask: Text;
-        dotPos: Integer;
+    // Pre-agregacion: 1 sola query a Job Ledger Entry
+    local procedure BuildJLSums()
     begin
-        Rec.DeleteAll(); // Limpiar la tabla temporal antes de llenarla
+        Clear(JLSums);
+        jl.Reset();
+        if jl.FindSet() then
+            repeat
+                tmpKey := jl."No." + '|' + jl."Location Code" + '|' + jl."Job Task No.";
+                if JLSums.ContainsKey(tmpKey) then begin
+                    JLSums.Get(tmpKey, tmpQty);
+                    JLSums.Set(tmpKey, tmpQty + jl.Quantity);
+                end else
+                    JLSums.Add(tmpKey, jl.Quantity);
+            until jl.Next() = 0;
+    end;
+
+    // Pre-carga: 1 sola query a Item Variant
+    local procedure BuildVariantDescs()
+    begin
+        Clear(VariantDescs);
+        if iv.FindSet() then
+            repeat
+                tmpKey := iv."Item No." + '|' + iv.Code;
+                if not VariantDescs.ContainsKey(tmpKey) then
+                    VariantDescs.Add(tmpKey, iv.Description);
+            until iv.Next() = 0;
+    end;
+
+    local procedure GetJLQty(itemNo: Code[20]; worksNo: Code[20]; taskNo: Code[20]): Decimal
+    begin
+        tmpKey := itemNo + '|' + worksNo + '|' + taskNo;
+        if JLSums.Get(tmpKey, tmpQty) then
+            exit(tmpQty);
+        exit(0);
+    end;
+
+    local procedure GetVariantDescFromDict(itemNo: Code[20]; variantCode: Code[10]): Text
+    begin
+        if (itemNo = '') or (variantCode = '') then
+            exit('');
+        tmpKey := itemNo + '|' + variantCode;
+        if VariantDescs.Get(tmpKey, tmpText) then
+            exit(tmpText);
+        exit('');
+    end;
+
+    local procedure BuildDecompReadAPITmp()
+    begin
+        Rec.DeleteAll();
+        Clear(PresupKeys);
+
+        // 2 queries totales para pre-cargar todo
+        BuildJLSums();       // 1 query: todos los Job Ledger Entries
+        BuildVariantDescs(); // 1 query: todas las Item Variants
+
         // Presupuestadas
-        decompLine.SetRange(Type, decompLine.Type::Item); // Solo líneas de tipo Item
-        if decompLine.FindSet() then // Recorremos todas las líneas de descomposición
-            repeat // para cada línea, calculamos lo gastado y otros campos adicionales y luego insertamos un registro en la tabla temporal
-                Rec.Init();       // Inicializamos el registro temporal
-                Rec.SystemId := decompLine.SystemId;  // Usamos el mismo SystemId para trazabilidad
-                Rec.category := 'Presupuestado'; // Marcamos la categoría para diferenciar luego en la consulta
-                Rec."Works No." := decompLine."Works No."; // Copiamos los campos base de la línea de descomposición 
-                Rec."Task No." := decompLine."Task No.";  // Copiamos los campos base de la línea de descomposición
-                Rec."Description" := decompLine."Description";          // Copiamos los campos base de la línea de descomposición
-                Rec."Quantity" := decompLine."Quantity"; // Copiamos los campos base de la línea de descomposición
-                Rec."Job No." := decompLine."Job No."; // Copiamos los campos base de la línea de descomposición
-                Rec."Unit of Measure" := decompLine."Unit of Measure"; // Copiamos los campos base de la línea de descomposición
-                Rec."Task Type" := Format(decompLine."Task Type"); // Copiamos los campos base de la línea de descomposición
-                Rec."Type" := Format(decompLine."Type"); // Copiamos los campos base de la línea de descomposición
-                Rec."No." := decompLine."No."; // Copiamos los campos base de la línea de descomposición
-                Rec."Performance" := decompLine."Performance"; // Copiamos los campos base de la línea de descomposición
-                Rec."Variant Code" := decompLine."Variant Code"; // Copiamos los campos base de la línea de descomposición
-                // Parent Task
-                parentTask := Format(decompLine."Task No."); // El campo Task No. tiene el formato "ParentTask.SubTask", así que para obtener el ParentTask hacemos un copy hasta el punto
-                dotPos := StrPos(parentTask, '.');      // Buscamos la posición del punto en el texto del ParentTask 
-                if dotPos > 0 then
-                    Rec.parentTaskTemp := CopyStr(parentTask, 1, dotPos - 1) // Si hay punto, copiamos solo la parte del ParentTask
+        decompLine.SetRange(Type, decompLine.Type::Item);
+        if decompLine.FindSet() then
+            repeat
+                Rec.Init();
+                Rec.SystemId := decompLine.SystemId;
+                Rec.category := 'Presupuestado';
+                Rec."Works No." := decompLine."Works No.";
+                Rec."Task No." := decompLine."Task No.";
+                Rec."Description" := decompLine."Description";
+                Rec."Quantity" := decompLine."Quantity";
+                Rec."Job No." := decompLine."Job No.";
+                Rec."Unit of Measure" := decompLine."Unit of Measure";
+                Rec."Task Type" := Format(decompLine."Task Type");
+                Rec."Type" := Format(decompLine."Type");
+                Rec."No." := decompLine."No.";
+                Rec."Performance" := decompLine."Performance";
+                Rec."Variant Code" := decompLine."Variant Code";
+
+                // Parent Task (sin query)
+                tmpParentTask := Format(decompLine."Task No.");
+                tmpDotPos := StrPos(tmpParentTask, '.');
+                if tmpDotPos > 0 then
+                    Rec.parentTaskTemp := CopyStr(tmpParentTask, 1, tmpDotPos - 1)
                 else
-                    Rec.parentTaskTemp := parentTask; // Si no hay punto, copiamos todo el ParentTask
-                // VariantDesc
-                if (decompLine."No." <> '') and (decompLine."Variant Code" <> '') then
-                    if ItemVariant.Get(decompLine."No.", decompLine."Variant Code") then
-                        Rec.VariantDesc := ItemVariant.Description;
-                // Calcular qtyGastado
-                jl.Reset(); // Para calcular lo gastado, sumamos las cantidades de los Job Ledger Entry relacionados con esta línea de descomposición (mismo Item No., misma Works No. en Location Code, misma Task No. en Job Task No. y mismo Job No.)
-                jl.SetRange("No.", decompLine."No.");
-                jl.SetRange("Location Code", decompLine."Works No."); // En nuestro diseño, el campo "Location Code" del Job Ledger Entry se usa para guardar el número de obra, lo cual nos permite relacionar los consumos con la obra correspondiente
-                jl.SetRange("Job Task No.", decompLine."Task No.");
-                // jl.SetRange("Job No.", decompLine."Job No."); // También filtramos por Job No. para evitar mezclar consumos de diferentes trabajos que puedan tener tareas con el mismo número
-                jl.CalcSums(Quantity);
-                Rec.qtyGastado := jl.Quantity;
-                Rec.cantidadDisponible := decompLine."Quantity" - Rec.qtyGastado; //presupuestado - gastado
-                Rec.estadoConsumo := GetestadoConsumo(decompLine."Performance", Rec.qtyGastado); // estado de consumo  (disponible, 0 consumo parcial, 1 consumido, 2 sobreconsumo)
-                Rec.EsConsumido := Rec.qtyGastado > 0;// si se ha consumido algo, aunque sea parcialmente
+                    Rec.parentTaskTemp := tmpParentTask;
+
+                // VariantDesc - Dictionary lookup O(1), sin query
+                Rec.VariantDesc := GetVariantDescFromDict(decompLine."No.", decompLine."Variant Code");
+
+                // qtyGastado - Dictionary lookup O(1), sin query
+                Rec.qtyGastado := GetJLQty(decompLine."No.", decompLine."Works No.", decompLine."Task No.");
+                Rec.cantidadDisponible := decompLine."Quantity" - Rec.qtyGastado;
+                Rec.estadoConsumo := GetestadoConsumo(decompLine."Performance", Rec.qtyGastado);
+                Rec.EsConsumido := Rec.qtyGastado > 0;
+
+                // Registrar clave para el check de Extras (sin query)
+                tmpKey := decompLine."No." + '|' + decompLine."Works No." + '|' + Format(decompLine."Task No.");
+                if not PresupKeys.ContainsKey(tmpKey) then
+                    PresupKeys.Add(tmpKey, true);
+
                 Rec.Insert();
             until decompLine.Next() = 0;
 
-        // Extras (consumidos sin presupuestar)
+        // Extras: JL sin linea presupuestada - Dictionary check, sin query a decompLine
         jl.Reset();
         jl.SetFilter(Quantity, '>%1', 0);
         if jl.FindSet() then
             repeat
-                // Buscar si existe en presupuestadas
-                decompLine.Reset();
-                decompLine.SetRange(Type, decompLine.Type::Item);
-                decompLine.SetRange("No.", jl."No.");
-                decompLine.SetRange("Works No.", jl."Location Code");
-                decompLine.SetRange("Task No.", jl."Job Task No.");
-                //  decompLine.SetRange("Job No.", jl."Job No."); //
-                exists := decompLine.FindFirst();
-                if not exists then begin
+                tmpKey := jl."No." + '|' + jl."Location Code" + '|' + jl."Job Task No.";
+                if not PresupKeys.ContainsKey(tmpKey) then begin
                     Rec.Init();
                     Rec.SystemId := CreateGuid();
                     Rec.category := 'Extra';
@@ -124,7 +174,6 @@ page 50106 "ConsumidoObra"
                     Rec."Task No." := jl."Job Task No.";
                     Rec."Description" := jl."Description";
                     Rec."Quantity" := 0;
-                    //  Rec."Job No." := jl."Job No."; // 
                     Rec."Unit of Measure" := jl."Unit of Measure Code";
                     Rec."Task Type" := '';
                     Rec."Type" := 'Item';

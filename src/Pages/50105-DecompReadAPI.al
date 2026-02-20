@@ -91,71 +91,80 @@ page 50105 "GJW Works Decomp OnSite"
     }
 
     var
-        // Cachés por registro para minimizar llamadas (ligero en red y DB)
         QtyGastado: Decimal;
         VariantDesc: Text;
         EsConsumido: Boolean;
-
         JL: Record "Job Ledger Entry";
         ItemVariant: Record "Item Variant";
+        JLSums: Dictionary of [Text, Decimal];
+        VariantDescs: Dictionary of [Text, Text];
+        tmpKey: Text;
+        tmpQty: Decimal;
+        tmpText: Text;
+        tmpDotPos: Integer;
+
+    trigger OnOpenPage()
+    begin
+        BuildJLSums();
+        BuildVariantDescs();
+    end;
+
+    // Pre-agregacion: 1 sola query a Job Ledger Entry
+    local procedure BuildJLSums()
+    begin
+        Clear(JLSums);
+        JL.Reset();
+        if JL.FindSet() then
+            repeat
+                tmpKey := JL."No." + '|' + JL."Location Code" + '|' + JL."Job Task No.";
+                if JLSums.ContainsKey(tmpKey) then begin
+                    JLSums.Get(tmpKey, tmpQty);
+                    JLSums.Set(tmpKey, tmpQty + JL.Quantity);
+                end else
+                    JLSums.Add(tmpKey, JL.Quantity);
+            until JL.Next() = 0;
+    end;
+
+    // Pre-carga: 1 sola query a Item Variant
+    local procedure BuildVariantDescs()
+    begin
+        Clear(VariantDescs);
+        if ItemVariant.FindSet() then
+            repeat
+                tmpKey := ItemVariant."Item No." + '|' + ItemVariant.Code;
+                if not VariantDescs.ContainsKey(tmpKey) then
+                    VariantDescs.Add(tmpKey, ItemVariant.Description);
+            until ItemVariant.Next() = 0;
+    end;
 
     trigger OnAfterGetRecord()
     begin
-        // Precalcular una vez por registro para que los campos calculados no re-ejecuten consultas
-        QtyGastado := CalcQtyGastado();
-        VariantDesc := CalcVariantDesc();
+        // Dictionary lookups O(1) - sin queries a la DB
+        tmpKey := Rec."No." + '|' + Rec."Works No." + '|' + Rec."Task No.";
+        if JLSums.Get(tmpKey, tmpQty) then
+            QtyGastado := tmpQty
+        else
+            QtyGastado := 0;
+
+        if (Rec."No." <> '') and (Rec."Variant Code" <> '') then begin
+            tmpKey := Rec."No." + '|' + Rec."Variant Code";
+            if VariantDescs.Get(tmpKey, tmpText) then
+                VariantDesc := tmpText
+            else
+                VariantDesc := '';
+        end else
+            VariantDesc := '';
+
         EsConsumido := QtyGastado > 0;
     end;
 
     local procedure GetParentTaskTemp(): Text
-    var
-        t: Text;
-        dotPos: Integer;
     begin
-        t := Format(Rec."Task No.");
-        dotPos := StrPos(t, '.');
-        if dotPos > 0 then
-            exit(CopyStr(t, 1, dotPos - 1));
-        exit(t);
-    end;
-
-    local procedure CalcVariantDesc(): Text
-    begin
-        if (Rec."No." = '') or (Rec."Variant Code" = '') then
-            exit('');
-        if ItemVariant.Get(Rec."No.", Rec."Variant Code") then
-            exit(ItemVariant.Description);
-        exit('');
-    end;
-
-    local procedure CalcQtyGastado(): Decimal
-    var
-        total: Decimal;
-    begin
-        // Filtros solicitados:
-        // Item No. = No.
-        // Location Code = Works No.   (ajusta si en tu modelo "Works No." no es ubicación)
-        // Job Task No. = Task No.
-        // Solo positivas (interpretado como Quantity > 0 en Job Ledger Entry)
-        JL.Reset();
-        if Rec."No." <> '' then
-            JL.SetRange("No.", Rec."No."); // Filtro por Item No.
-
-        if Rec."Works No." <> '' then
-            JL.SetRange("Location Code", Rec."Works No."); // Filtro por Works No. en Location Code (ajusta si tu modelo es diferente)
-
-        if Rec."Task No." <> '' then
-            JL.SetRange("Job Task No.", Rec."Task No."); // Filtro por Task No. en Job Task No.
-
-        // Si también quieres acotar por proyecto: (descomenta si corresponde a tu modelo)
-        if Rec."Job No." <> '' then
-            JL.SetRange("Job No.", Rec."Job No.");
-
-        //        JL.SetFilter(Quantity, '>%1', 0); // Solo cantidades positivas (ajusta si tu definición de "gastado" es diferente)
-
-        JL.CalcSums(Quantity);
-        total := JL.Quantity;
-        exit(total);
+        tmpText := Format(Rec."Task No.");
+        tmpDotPos := StrPos(tmpText, '.');
+        if tmpDotPos > 0 then
+            exit(CopyStr(tmpText, 1, tmpDotPos - 1));
+        exit(tmpText);
     end;
 
     local procedure GetCantidadDisponible(): Decimal
@@ -167,14 +176,11 @@ page 50105 "GJW Works Decomp OnSite"
     begin
         if Rec."Performance" > QtyGastado then
             exit(0);
-
         if Rec."Performance" = QtyGastado then
             exit(1);
-
         if Rec."Performance" < QtyGastado then
             exit(2);
-
-        exit(0); // fallback improbable, pero evita warnings del compilador
+        exit(0);
     end;
 
 }
