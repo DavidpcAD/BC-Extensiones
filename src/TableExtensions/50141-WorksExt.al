@@ -36,5 +36,17 @@ tableextension 50141 "GJW Works Ext" extends "GomJob Works"
             Caption = 'ID Encargado';
             DataClassification = CustomerContent;
         }
+
+        field(50201; "Budget Locked"; Boolean)
+        {
+            Caption = 'Presupuesto Bloqueado';
+            DataClassification = CustomerContent;
+        }
+
+        field(50202; "En Ejecucion"; Boolean)
+        {
+            Caption = 'En Ejecución';
+            DataClassification = CustomerContent;
+        }
     }
 }

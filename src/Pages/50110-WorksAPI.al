@@ -46,6 +46,10 @@ page 50110 "GJW Works API"
                 field(certPosted; Rec."Cert. Posted Line Amount") { Caption = 'Cert. Posted Amount'; Editable = false; }
                 field(certPending; Rec."Cert. Pending Line Amount") { Caption = 'Cert. Pending Amount'; Editable = false; }
 
+                // Control de edición
+                field(budgetLocked; Rec."Budget Locked") { Caption = 'Budget Locked'; }
+                field(enEjecucion; Rec."En Ejecucion") { Caption = 'En Ejecucion'; }
+
                 // Auditoría
                 field(systemModifiedAt; Rec.SystemModifiedAt) { Caption = 'System Modified At'; }
             }

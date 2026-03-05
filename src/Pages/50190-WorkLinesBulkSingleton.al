@@ -66,6 +66,7 @@ page 50190 "GJW WorkLines Bulk Singleton"
     local procedure ProcesarBulk()
     var
         BulkCU: Codeunit "GJW WorkLines Bulk";
+        Works: Record "GomJob Works";
     begin
         Ejecutar := false;
 
@@ -79,5 +80,12 @@ page 50190 "GJW WorkLines Bulk Singleton"
 
         // Insertar las nuevas líneas (NO elimina nada - Power Apps maneja versiones)
         Resultado := BulkCU.Import(LineasJSON, '[]', '[]');
+
+        // 🔒 Bloquear el presupuesto de la obra tras el envío desde Power Apps
+        if Works.Get(WorksNo) then begin
+            Works."Budget Locked" := true;
+            Works.Modify(true);
+            Commit();
+        end;
     end;
 }

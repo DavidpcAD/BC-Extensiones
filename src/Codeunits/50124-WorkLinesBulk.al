@@ -12,6 +12,7 @@ codeunit 50124 "GJW WorkLines Bulk"
         Val: JsonToken;
 
         WorkLine: Record "GomJob Works Line";
+        Works: Record "GomJob Works";
         InsCount: Integer;
         ErrorCount: Integer;
 
@@ -135,7 +136,16 @@ codeunit 50124 "GJW WorkLines Bulk"
             end;
         end;
 
-        // 📊 RESULTADO
+        // � BLOQUEAR OBRA si se insertaron líneas exitosamente
+        if (InsCount > 0) and (WorksNo <> '') then begin
+            if Works.Get(WorksNo) then begin
+                Works."Budget Locked" := true;
+                Works.Modify(true);
+                Commit();
+            end;
+        end;
+
+        // �📊 RESULTADO
         if ErrorCount > 0 then
             exit(Format(InsCount) + ' líneas creadas. ⚠️ ' + Format(ErrorCount) + ' errores.')
         else

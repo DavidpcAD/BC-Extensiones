@@ -79,6 +79,8 @@ page 50163 "GJW Post Command API"
         ItemJnlLine: Record "Item Journal Line";
         ItemLedgerEntry: Record "Item Ledger Entry";
         ItemJnlPostBatch: Codeunit "Item Jnl.-Post Batch";
+        UserSetup: Record "User Setup";
+        GLSetup: Record "General Ledger Setup";
         LineCount: Integer;
         PostedEntriesCount: Integer;
         BatchName: Code[20];
@@ -89,6 +91,11 @@ page 50163 "GJW Post Command API"
         DocumentNo: Code[20];
         LastEntryNoBefore: Integer;
         CleanJnlLine: Record "Item Journal Line";
+        SavedUserAllowFrom: Date;
+        SavedUserAllowTo: Date;
+        SavedGLAllowFrom: Date;
+        SavedGLAllowTo: Date;
+        UserSetupExists: Boolean;
     begin
         // Generar Command ID si no viene del cliente
         if IsNullGuid(Rec."Command ID") then
@@ -199,6 +206,37 @@ page 50163 "GJW Post Command API"
             exit(true);
         end;
 
+        // ✅ DESACTIVAR RESTRICCIONES DE FECHA (User Setup + GL Setup) antes del posting
+        // El error "Posting Date is not within your range" ocurre en líneas internas temporales
+        // que BC crea durante el posting. La solución es suspender el rango permitido.
+        UserSetupExists := UserSetup.Get(UserId());
+        if UserSetupExists then begin
+            SavedUserAllowFrom := UserSetup."Allow Posting From";
+            SavedUserAllowTo := UserSetup."Allow Posting To";
+            if (SavedUserAllowFrom <> 0D) or (SavedUserAllowTo <> 0D) then begin
+                UserSetup."Allow Posting From" := 0D;
+                UserSetup."Allow Posting To" := 0D;
+                UserSetup.Modify(false);
+            end;
+        end;
+
+        GLSetup.Get();
+        SavedGLAllowFrom := GLSetup."Allow Posting From";
+        SavedGLAllowTo := GLSetup."Allow Posting To";
+        if (SavedGLAllowFrom <> 0D) or (SavedGLAllowTo <> 0D) then begin
+            GLSetup."Allow Posting From" := 0D;
+            GLSetup."Allow Posting To" := 0D;
+            GLSetup.Modify(false);
+        end;
+
+        Commit();
+
+        // Reposicionar el recordset tras el Commit para el posting
+        ItemJnlLine.Reset();
+        ItemJnlLine.SetRange("Journal Template Name", TemplateName);
+        ItemJnlLine.SetRange("Journal Batch Name", BatchName);
+        ItemJnlLine.FindFirst();
+
         // Usar Codeunit.Run para mejor manejo en API
         if not Codeunit.Run(Codeunit::"Item Jnl.-Post Batch", ItemJnlLine) then begin
             // Capturar error del posting
@@ -210,6 +248,9 @@ page 50163 "GJW Post Command API"
             Rec."Processing Completed" := CurrentDateTime();
             Rec."Duration (ms)" := Round((CurrentDateTime() - StartTime) / 1000, 1);
             ClearLastError();
+            // 🔄 RESTAURAR restricciones de fecha aunque haya fallado
+            RestorePostingDates(UserSetup, GLSetup, UserSetupExists,
+                SavedUserAllowFrom, SavedUserAllowTo, SavedGLAllowFrom, SavedGLAllowTo);
             exit(true);
         end;
 
@@ -265,7 +306,39 @@ page 50163 "GJW Post Command API"
                 CleanJnlLine.Delete();
             until CleanJnlLine.Next() = 0;
 
+        // 🔄 RESTAURAR restricciones de fecha en cualquier caso
+        RestorePostingDates(UserSetup, GLSetup, UserSetupExists,
+            SavedUserAllowFrom, SavedUserAllowTo, SavedGLAllowFrom, SavedGLAllowTo);
+
         exit(true);
+    end;
+
+    local procedure RestorePostingDates(
+        var UserSetup: Record "User Setup";
+        var GLSetup: Record "General Ledger Setup";
+        UserSetupExists: Boolean;
+        SavedUserFrom: Date; SavedUserTo: Date;
+        SavedGLFrom: Date; SavedGLTo: Date)
+    begin
+        // Restaurar User Setup
+        if UserSetupExists then begin
+            if (UserSetup."Allow Posting From" <> SavedUserFrom) or
+               (UserSetup."Allow Posting To" <> SavedUserTo) then begin
+                UserSetup."Allow Posting From" := SavedUserFrom;
+                UserSetup."Allow Posting To" := SavedUserTo;
+                UserSetup.Modify(false);
+            end;
+        end;
+
+        // Restaurar GL Setup
+        if (GLSetup."Allow Posting From" <> SavedGLFrom) or
+           (GLSetup."Allow Posting To" <> SavedGLTo) then begin
+            GLSetup."Allow Posting From" := SavedGLFrom;
+            GLSetup."Allow Posting To" := SavedGLTo;
+            GLSetup.Modify(false);
+        end;
+
+        Commit();
     end;
 
     local procedure BuildPostedEntriesJson(var ItemLedgerEntry: Record "Item Ledger Entry"): Text

@@ -23,4 +23,5 @@ codeunit 50200 "GJW Post Gen. Journal API"
     begin
         exit(PostBatch(templateName, batchName));
     end;
+
 }
