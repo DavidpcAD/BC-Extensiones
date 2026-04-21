@@ -317,8 +317,8 @@ codeunit 50159 "GJW Item Transfer Bulk"
         end;
 
         if Description <> '' then
-            ItemJnlLine.Description := Description
-        else
+            ItemJnlLine.Description := Description;
+        if ItemJnlLine.Description = '' then
             ItemJnlLine.Description := StrSubstNo('Transfer %1 → %2', LocationCode, NewLocationCode);
 
         if AppliesFromEntry <> 0 then

@@ -3,6 +3,8 @@ codeunit 50186 "GJW Material Consumption"
     procedure ConsumeWarehouseMaterials(ItemLedgerEntryNos: Text; JobNo: Code[20]; JobTaskNo: Code[20]; DocumentNo: Code[20]): Text
     var
         ItemLedgerEntry: Record "Item Ledger Entry";
+        Item: Record Item;
+        ItemVariant: Record "Item Variant";
         GomJobWarehouseQty: Record "GomJob Warehouse Quantity";
         JobJnlLine: Record "Job Journal Line";
         JobJnlPostLine: Codeunit "Job Jnl.-Post Line";
@@ -98,7 +100,7 @@ codeunit 50186 "GJW Material Consumption"
                                 // Datos del material
                                 JobJnlLine.Type := JobJnlLine.Type::Item;
                                 JobJnlLine.Validate("No.", ItemLedgerEntry."Item No.");
-                                JobJnlLine.Description := ItemLedgerEntry.Description;
+                                JobJnlLine.Description := GetMaterialDescription(ItemLedgerEntry, Item, ItemVariant);
                                 JobJnlLine."Variant Code" := ItemLedgerEntry."Variant Code";
                                 JobJnlLine.Validate(Quantity, GomJobWarehouseQty.Quantity);
                                 JobJnlLine."Unit of Measure Code" := ItemLedgerEntry."Unit of Measure Code";
@@ -177,5 +179,19 @@ codeunit 50186 "GJW Material Consumption"
 
         // Devolver solo jsonResults como arreglo (texto JSON) para Power Apps
         exit(Format(Arr));
+    end;
+
+    local procedure GetMaterialDescription(ItemLedgerEntry: Record "Item Ledger Entry"; var Item: Record Item; var ItemVariant: Record "Item Variant"): Text[100]
+    begin
+        if (ItemLedgerEntry."Item No." <> '') and (ItemLedgerEntry."Variant Code" <> '') then
+            if ItemVariant.Get(ItemLedgerEntry."Item No.", ItemLedgerEntry."Variant Code") then
+                if ItemVariant.Description <> '' then
+                    exit(CopyStr(ItemVariant.Description, 1, 100));
+
+        if (ItemLedgerEntry."Item No." <> '') and Item.Get(ItemLedgerEntry."Item No.") then
+            if Item.Description <> '' then
+                exit(CopyStr(Item.Description, 1, 100));
+
+        exit(CopyStr(ItemLedgerEntry.Description, 1, 100));
     end;
 }
