@@ -1,0 +1,273 @@
+namespace Adelante.Inventory;
+
+using Microsoft.Inventory.Ledger;
+
+page 50183 "GJW Item Avail Bulk Single"
+{
+    PageType = API;
+    APIPublisher = 'adelante';
+    APIGroup = 'construction';
+    APIVersion = 'v1.0';
+    EntityName = 'itemAvailByLocBulkOperation';
+    EntitySetName = 'itemAvailByLocBulkOperations';
+
+    SourceTable = "GJW Item Avail Bulk Request";
+    ODataKeyFields = SystemId;
+    DelayedInsert = true;
+    InsertAllowed = true;
+    ModifyAllowed = false;
+    DeleteAllowed = true;
+
+    layout
+    {
+        area(content)
+        {
+            field(id; Rec.SystemId)
+            {
+                Caption = 'Id';
+                Editable = false;
+            }
+            field(itemsJson; Rec."Items Json")
+            {
+                Caption = 'Items JSON';
+            }
+            field(locationCode; Rec."Location Code")
+            {
+                Caption = 'Location Code';
+            }
+            field(requestId; Rec."Request Id")
+            {
+                Caption = 'Request Id';
+                Editable = false;
+            }
+            field(status; Rec.Status)
+            {
+                Caption = 'Status';
+                Editable = false;
+            }
+            field(errorMessage; Rec."Error Message")
+            {
+                Caption = 'Error Message';
+                Editable = false;
+            }
+            field(resultJson; Rec."Result Json")
+            {
+                Caption = 'Result JSON';
+                Editable = false;
+            }
+        }
+    }
+
+    trigger OnInsertRecord(BelowxRec: Boolean): Boolean
+    var
+        RequestGuid: Guid;
+        ResultJson: Text;
+    begin
+        if Rec."Location Code" = '' then
+            Error('locationCode es requerido');
+        if Rec."Items Json" = '' then
+            Error('itemsJson es requerido');
+
+        RequestGuid := CreateGuid();
+        Rec."Requested At" := CurrentDateTime();
+        ResultJson := ProcessAndBuildJson(Rec."Items Json", Rec."Location Code", RequestGuid);
+        Rec."Request Id" := DelChr(Format(RequestGuid), '=', '{}');
+        Rec."Result Json" := CopyStr(ResultJson, 1, MaxStrLen(Rec."Result Json"));
+        Rec.Status := 'OK';
+        exit(true);
+    end;
+
+    local procedure ProcessAndBuildJson(itemsJson: Text; locationCode: Code[10]; RequestGuid: Guid): Text
+    var
+        ItemLedgerEntry: Record "Item Ledger Entry";
+        ItemsArray: JsonArray;
+        ResultArray: JsonArray;
+        ResultObj: JsonObject;
+        RequestedSpecific: Dictionary of [Text, Boolean];
+        RequestedBlankByItem: Dictionary of [Text, Boolean];
+        RequestedItems: Dictionary of [Text, Boolean];
+        RequestedOrder: List of [Text];
+        OutputKeys: Dictionary of [Text, Boolean];
+        QtyByKey: Dictionary of [Text, Decimal];
+        ItemNoTxt: Text;
+        VariantCodeTxt: Text;
+        RequestKey: Text;
+        SpecificKey: Text;
+        BlankKey: Text;
+        FilterItems: Text;
+        QtyAvailable: Decimal;
+        ResultJsonTxt: Text;
+    begin
+        if not ItemsArray.ReadFrom(itemsJson) then
+            Error('itemsJson invalido. Debe ser un arreglo JSON');
+
+        ParseRequestedItems(ItemsArray, RequestedSpecific, RequestedBlankByItem, RequestedItems, RequestedOrder, OutputKeys);
+
+        if RequestedItems.Count() = 0 then
+            exit('[]');
+
+        FilterItems := BuildItemsFilter(RequestedItems);
+
+        ItemLedgerEntry.SetRange("Location Code", locationCode);
+        ItemLedgerEntry.SetRange("Posting Date", 0D, Today());
+        ItemLedgerEntry.SetFilter("Item No.", FilterItems);
+        ItemLedgerEntry.SetCurrentKey("Item No.", "Variant Code", "Location Code");
+
+        if ItemLedgerEntry.FindSet() then
+            repeat
+                ItemNoTxt := Format(ItemLedgerEntry."Item No.");
+                VariantCodeTxt := Format(ItemLedgerEntry."Variant Code");
+
+                SpecificKey := BuildKey(ItemNoTxt, VariantCodeTxt);
+                if RequestedSpecific.ContainsKey(SpecificKey) then
+                    AddQty(QtyByKey, SpecificKey, ItemLedgerEntry.Quantity);
+
+                if RequestedBlankByItem.ContainsKey(ItemNoTxt) then begin
+                    BlankKey := BuildKey(ItemNoTxt, '*');
+                    AddQty(QtyByKey, BlankKey, ItemLedgerEntry.Quantity);
+                end;
+            until ItemLedgerEntry.Next() = 0;
+
+        foreach RequestKey in RequestedOrder do begin
+            QtyAvailable := GetQty(QtyByKey, RequestKey);
+            ItemNoTxt := GetItemNoFromKey(RequestKey);
+            VariantCodeTxt := GetVariantFromKey(RequestKey);
+
+            Clear(ResultObj);
+            ResultObj.Add('itemNo', ItemNoTxt);
+            ResultObj.Add('variantCode', VariantCodeTxt);
+            ResultObj.Add('locationCode', locationCode);
+            ResultObj.Add('availableQuantity', QtyAvailable);
+            ResultArray.Add(ResultObj);
+        end;
+
+        ResultArray.WriteTo(ResultJsonTxt);
+        exit(ResultJsonTxt);
+    end;
+
+    local procedure ParseRequestedItems(var ItemsArray: JsonArray; var RequestedSpecific: Dictionary of [Text, Boolean]; var RequestedBlankByItem: Dictionary of [Text, Boolean]; var RequestedItems: Dictionary of [Text, Boolean]; var RequestedOrder: List of [Text]; var OutputKeys: Dictionary of [Text, Boolean])
+    var
+        ItemToken: JsonToken;
+        ItemObject: JsonObject;
+        ItemNoTxt: Text;
+        VariantCodeTxt: Text;
+        RequestKey: Text;
+        i: Integer;
+    begin
+        for i := 0 to ItemsArray.Count() - 1 do begin
+            if not ItemsArray.Get(i, ItemToken) then
+                continue;
+
+            if not ItemToken.IsObject() then
+                continue;
+
+            ItemObject := ItemToken.AsObject();
+            ItemNoTxt := CopyStr(GetJsonText(ItemObject, 'itemNo'), 1, 20);
+            VariantCodeTxt := CopyStr(GetJsonText(ItemObject, 'variantCode'), 1, 10);
+
+            if ItemNoTxt = '' then
+                continue;
+
+            if not RequestedItems.ContainsKey(ItemNoTxt) then
+                RequestedItems.Add(ItemNoTxt, true);
+
+            if VariantCodeTxt = '' then begin
+                if not RequestedBlankByItem.ContainsKey(ItemNoTxt) then
+                    RequestedBlankByItem.Add(ItemNoTxt, true);
+                RequestKey := BuildKey(ItemNoTxt, '*');
+            end else begin
+                RequestKey := BuildKey(ItemNoTxt, VariantCodeTxt);
+                if not RequestedSpecific.ContainsKey(RequestKey) then
+                    RequestedSpecific.Add(RequestKey, true);
+            end;
+
+            if not OutputKeys.ContainsKey(RequestKey) then begin
+                OutputKeys.Add(RequestKey, true);
+                RequestedOrder.Add(RequestKey);
+            end;
+        end;
+    end;
+
+    local procedure BuildItemsFilter(var RequestedItems: Dictionary of [Text, Boolean]): Text
+    var
+        ItemNoTxt: Text;
+        ItemFilter: Text;
+    begin
+        ItemFilter := '';
+        foreach ItemNoTxt in RequestedItems.Keys() do begin
+            if ItemFilter <> '' then
+                ItemFilter += '|';
+            ItemFilter += ItemNoTxt;
+        end;
+
+        exit(ItemFilter);
+    end;
+
+    local procedure AddQty(var QtyByKey: Dictionary of [Text, Decimal]; KeyTxt: Text; QtyToAdd: Decimal)
+    var
+        CurrentQty: Decimal;
+    begin
+        if QtyByKey.ContainsKey(KeyTxt) then begin
+            QtyByKey.Get(KeyTxt, CurrentQty);
+            QtyByKey.Set(KeyTxt, CurrentQty + QtyToAdd);
+        end else
+            QtyByKey.Add(KeyTxt, QtyToAdd);
+    end;
+
+    local procedure GetQty(var QtyByKey: Dictionary of [Text, Decimal]; KeyTxt: Text): Decimal
+    var
+        Qty: Decimal;
+    begin
+        if QtyByKey.ContainsKey(KeyTxt) then begin
+            QtyByKey.Get(KeyTxt, Qty);
+            exit(Qty);
+        end;
+
+        exit(0);
+    end;
+
+    local procedure BuildKey(ItemNoTxt: Text; VariantCodeTxt: Text): Text
+    begin
+        exit(ItemNoTxt + '|' + VariantCodeTxt);
+    end;
+
+    local procedure GetItemNoFromKey(KeyTxt: Text): Text
+    var
+        SeparatorPos: Integer;
+    begin
+        SeparatorPos := StrPos(KeyTxt, '|');
+        if SeparatorPos = 0 then
+            exit(KeyTxt);
+
+        exit(CopyStr(KeyTxt, 1, SeparatorPos - 1));
+    end;
+
+    local procedure GetVariantFromKey(KeyTxt: Text): Text
+    var
+        SeparatorPos: Integer;
+        VariantTxt: Text;
+    begin
+        SeparatorPos := StrPos(KeyTxt, '|');
+        if SeparatorPos = 0 then
+            exit('');
+
+        VariantTxt := CopyStr(KeyTxt, SeparatorPos + 1);
+        if VariantTxt = '*' then
+            exit('');
+
+        exit(VariantTxt);
+    end;
+
+    local procedure GetJsonText(var JObject: JsonObject; KeyName: Text): Text
+    var
+        JToken: JsonToken;
+    begin
+        if not JObject.Get(KeyName, JToken) then
+            exit('');
+
+        if JToken.AsValue().IsNull() then
+            exit('');
+
+        exit(JToken.AsValue().AsText());
+    end;
+}
