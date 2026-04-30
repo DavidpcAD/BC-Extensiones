@@ -9,7 +9,7 @@ page 50154 "Job Task API"
     EntitySetName = 'jobTasks';
     SourceTable = "Job Task";
 
-    ODataKeyFields = "Job No.", "Job Task No.";
+    ODataKeyFields = SystemId;
     DelayedInsert = true;
 
     InsertAllowed = true;

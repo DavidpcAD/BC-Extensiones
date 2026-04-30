@@ -111,7 +111,7 @@ page 50181 "Item Avail. by Loc Filtered"
                     TempBuffer.Insert();
                 end;
 
-                TempBuffer.TotalQuantity += ItemLedgerEntry.Quantity;
+                TempBuffer.TotalQuantity += ItemLedgerEntry."Remaining Quantity";
                 TempBuffer.Modify();
             until ItemLedgerEntry.Next() = 0;
         end;

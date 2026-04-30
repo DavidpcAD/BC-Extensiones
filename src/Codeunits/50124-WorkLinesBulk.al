@@ -15,6 +15,8 @@ codeunit 50124 "GJW WorkLines Bulk"
         Works: Record "GomJob Works";
         InsCount: Integer;
         ErrorCount: Integer;
+        ErrorMessages: Text;
+        InsertErrMsg: Text;
 
         // Campos obligatorios
         WorksNo: Code[20];
@@ -113,22 +115,32 @@ codeunit 50124 "GJW WorkLines Bulk"
 
                         // ✅ VALIDAR campos obligatorios
                         if WorksNo = '' then begin
+                            ErrorMessages += '|worksNo vacío';
+                            ErrorCount += 1;
+                        end else if not Works.Get(WorksNo) then begin
+                            ErrorMessages += '|worksNo no existe en GomJob Works: ' + WorksNo;
                             ErrorCount += 1;
                         end else if VersionCode = '' then begin
+                            ErrorMessages += '|versionCode vacío (worksNo=' + WorksNo + ')';
                             ErrorCount += 1;
                         end else if LineTypeTxt = '' then begin
+                            ErrorMessages += '|lineType vacío (worksNo=' + WorksNo + ')';
                             ErrorCount += 1;
                         end else if TaskTypeTxt = '' then begin
+                            ErrorMessages += '|taskType vacío (worksNo=' + WorksNo + ')';
                             ErrorCount += 1;
                         end else begin
                             // 🚀 INSERTAR
+                            InsertErrMsg := '';
                             if InsertNewLine(WorkLine, WorksNo, VersionCode, LineNo, LineTypeTxt, TaskTypeTxt,
                                 TaskNo, Description, Quantity, UnitAmount, LineAmount, QuantityToProduce,
-                                UnitOfMeasure, CodeOrder, IdEncargado, IDVisibles, ReStudy) then begin
+                                UnitOfMeasure, CodeOrder, IdEncargado, IDVisibles, ReStudy, InsertErrMsg) then begin
                                 InsCount += 1;
                                 Commit();
-                            end else
+                            end else begin
+                                ErrorMessages += '|' + InsertErrMsg;
                                 ErrorCount += 1;
+                            end;
                         end;
                     end else
                         ErrorCount += 1;
@@ -147,7 +159,7 @@ codeunit 50124 "GJW WorkLines Bulk"
 
         // �📊 RESULTADO
         if ErrorCount > 0 then
-            exit(Format(InsCount) + ' líneas creadas. ⚠️ ' + Format(ErrorCount) + ' errores.')
+            exit(Format(InsCount) + ' líneas creadas. ⚠️ ' + Format(ErrorCount) + ' errores. Detalle: ' + ErrorMessages)
         else
             exit('✅ ' + Format(InsCount) + ' líneas creadas correctamente.');
     end;
@@ -156,7 +168,7 @@ codeunit 50124 "GJW WorkLines Bulk"
         WorksNo: Code[20]; VersionCode: Code[20]; LineNo: Integer; LineTypeTxt: Text; TaskTypeTxt: Text;
         TaskNo: Code[50]; Description: Text[250]; Quantity: Decimal; UnitAmount: Decimal; LineAmount: Decimal;
         QuantityToProduce: Decimal; UnitOfMeasure: Code[10]; CodeOrder: Code[50]; IdEncargado: Text[100];
-        IDVisibles: Text[100]; ReStudy: Boolean): Boolean
+        IDVisibles: Text[100]; ReStudy: Boolean; var ErrMsg: Text): Boolean
     var
         LineTypeEnum: Enum "GomJob Works Line Type";
         TaskTypeOpt: Option Posting,Heading,Total;
@@ -178,13 +190,17 @@ codeunit 50124 "GJW WorkLines Bulk"
                 LineTypeTxt := 'Indirect Cost';
         end;
 
-        if not Evaluate(LineTypeEnum, LineTypeTxt) then
+        if not Evaluate(LineTypeEnum, LineTypeTxt) then begin
+            ErrMsg := 'LineType inválido: ' + LineTypeTxt + ' (worksNo=' + WorksNo + ')';
             exit(false);
+        end;
         RecLine."Line Type" := LineTypeEnum;
 
         // ✅ VALIDAR Task Type
-        if not Evaluate(TaskTypeOpt, TaskTypeTxt) then
+        if not Evaluate(TaskTypeOpt, TaskTypeTxt) then begin
+            ErrMsg := 'TaskType inválido: ' + TaskTypeTxt + ' (worksNo=' + WorksNo + ')';
             exit(false);
+        end;
         RecLine."Task Type" := TaskTypeOpt;
 
         // Asignar resto de campos
@@ -200,7 +216,11 @@ codeunit 50124 "GJW WorkLines Bulk"
         RecLine."IDVisibles" := IDVisibles;
         RecLine."Re-Study" := ReStudy;
 
-        exit(RecLine.Insert(true));
+        if not RecLine.Insert(true) then begin
+            ErrMsg := 'Insert falló para worksNo=' + WorksNo + ' lineNo=' + Format(RecLine."Line No.");
+            exit(false);
+        end;
+        exit(true);
     end;
 
     local procedure GetNextLineNo(WorksNo: Code[20]; VersionCode: Code[20]): Integer

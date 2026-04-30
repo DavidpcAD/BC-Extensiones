@@ -6,11 +6,9 @@ codeunit 50157 "GJW Item Journal Post Handler"
         // Copiar Task No. del diario al Item Ledger Entry
         ItemLedgerEntry."Task No." := ItemJournalLine."Task No.";
 
-        // Guardar NewJobNo y NewJobTaskNo en variables globales para usar después
-        if ItemJournalLine."New Job No." <> '' then
-            GlobalNewJobNo := ItemJournalLine."New Job No.";
-        if ItemJournalLine."New Job Task No." <> '' then
-            GlobalNewJobTaskNo := ItemJournalLine."New Job Task No.";
+        // Persistir el destino en el propio ILE para evitar pérdida entre eventos.
+        ItemLedgerEntry."GJW New Job No." := ItemJournalLine."New Job No.";
+        ItemLedgerEntry."GJW New Job Task No." := ItemJournalLine."New Job Task No.";
     end;
 
     [EventSubscriber(ObjectType::Table, Database::"Item Ledger Entry", 'OnAfterInsertEvent', '', false, false)]
@@ -47,37 +45,29 @@ codeunit 50157 "GJW Item Journal Post Handler"
         WarehouseQty: Record "GomJob Warehouse Quantity";
         JobTask: Record "Job Task";
     begin
-        // Solo procesar transferencias con proyecto/tarea destino
-        if (GlobalNewJobNo = '') or (GlobalNewJobTaskNo = '') then
-            exit;
-
         // Solo para movimientos positivos (entrada al destino)
         if not Rec.Positive then
             exit;
 
+        // Solo procesar transferencias con proyecto/tarea destino
+        if (Rec."GJW New Job No." = '') or (Rec."GJW New Job Task No." = '') then
+            exit;
+
         // Verificar que la tarea destino existe
-        if not JobTask.Get(GlobalNewJobNo, GlobalNewJobTaskNo) then
+        if not JobTask.Get(Rec."GJW New Job No.", Rec."GJW New Job Task No.") then
             exit;
 
         // Buscar si ya existe el registro
-        if WarehouseQty.Get(Rec."Entry No.", GlobalNewJobNo, GlobalNewJobTaskNo) then
+        if WarehouseQty.Get(Rec."Entry No.", Rec."GJW New Job No.", Rec."GJW New Job Task No.") then
             exit; // Ya existe
 
         // Crear vínculo con la tarea destino
         WarehouseQty.Init();
         WarehouseQty."Item Ledger Entry No." := Rec."Entry No.";
-        WarehouseQty."Job No." := GlobalNewJobNo;
-        WarehouseQty."Job Task No." := GlobalNewJobTaskNo;
+        WarehouseQty."Job No." := Rec."GJW New Job No.";
+        WarehouseQty."Job Task No." := Rec."GJW New Job Task No.";
         WarehouseQty."Job Task Description" := JobTask.Description;
         WarehouseQty.Quantity := Rec.Quantity;
         WarehouseQty.Insert(true);
-
-        // Limpiar variables globales
-        Clear(GlobalNewJobNo);
-        Clear(GlobalNewJobTaskNo);
     end;
-
-    var
-        GlobalNewJobNo: Code[20];
-        GlobalNewJobTaskNo: Code[20];
 }

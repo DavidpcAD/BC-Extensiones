@@ -96,6 +96,7 @@ page 50163 "GJW Post Command API"
         SavedGLAllowFrom: Date;
         SavedGLAllowTo: Date;
         UserSetupExists: Boolean;
+        BatchSnapshotJson: Text;
     begin
         // Generar Command ID si no viene del cliente
         if IsNullGuid(Rec."Command ID") then
@@ -138,6 +139,9 @@ page 50163 "GJW Post Command API"
 
         // Contar líneas ANTES del posting
         LineCount := ItemJnlLine.Count();
+
+        // Capturar snapshot del batch para devolver mapeo origen/destino útil a Power Apps.
+        BatchSnapshotJson := BuildBatchSnapshotJson(ItemJnlLine);
 
         // ✅ CAPTURAR DOCUMENT NO ANTES DEL POSTING
         DocumentNo := ItemJnlLine."Document No.";
@@ -278,8 +282,8 @@ page 50163 "GJW Post Command API"
             // Ordenar por Entry No. antes de construir el JSON
             ItemLedgerEntry.SetCurrentKey("Entry No.");
             ItemLedgerEntry.Ascending(true);
-            // Construir JSON array con ItemNo y EntryNo
-            Rec."JSON Results" := BuildPostedEntriesJson(ItemLedgerEntry);
+            // Construir JSON array con entry origen consumible + entry destino registrado.
+            Rec."JSON Results" := BuildPostedEntriesJson(ItemLedgerEntry, BatchSnapshotJson);
 
             Rec."Posting Status" := Rec."Posting Status"::Success;
             Rec."Error Details" := '';
@@ -341,32 +345,215 @@ page 50163 "GJW Post Command API"
         Commit();
     end;
 
-    local procedure BuildPostedEntriesJson(var ItemLedgerEntry: Record "Item Ledger Entry"): Text
+    local procedure BuildBatchSnapshotJson(var ItemJnlLine: Record "Item Journal Line"): Text
     var
-        JsonArray: Text;
-        FirstEntry: Boolean;
+        SnapshotArray: JsonArray;
+        SnapshotObject: JsonObject;
+        SnapshotText: Text;
     begin
-        JsonArray := '[';
-        FirstEntry := true;
-
-        if ItemLedgerEntry.FindSet() then
+        if ItemJnlLine.FindSet() then
             repeat
-                if not FirstEntry then
-                    JsonArray += ','
+                Clear(SnapshotObject);
+                SnapshotObject.Add('lineNo', ItemJnlLine."Line No.");
+                SnapshotObject.Add('itemNo', ItemJnlLine."Item No.");
+                SnapshotObject.Add('documentNo', ItemJnlLine."Document No.");
+                SnapshotObject.Add('postingDate', Format(ItemJnlLine."Posting Date", 0, 9));
+                SnapshotObject.Add('quantity', Format(ItemJnlLine.Quantity, 0, 9));
+                SnapshotObject.Add('locationCode', ItemJnlLine."Location Code");
+                SnapshotObject.Add('newLocationCode', ItemJnlLine."New Location Code");
+                SnapshotObject.Add('taskNo', ItemJnlLine."Task No.");
+                SnapshotObject.Add('newJobNo', ItemJnlLine."New Job No.");
+                SnapshotObject.Add('newJobTaskNo', ItemJnlLine."New Job Task No.");
+                SnapshotObject.Add('appliesFromEntry', ItemJnlLine."Applies-from Entry");
+                SnapshotObject.Add('appliesToEntry', ItemJnlLine."Applies-to Entry");
+                SnapshotArray.Add(SnapshotObject);
+            until ItemJnlLine.Next() = 0;
+
+        SnapshotArray.WriteTo(SnapshotText);
+        exit(SnapshotText);
+    end;
+
+    local procedure BuildPostedEntriesJson(var ItemLedgerEntry: Record "Item Ledger Entry"; BatchSnapshotJson: Text): Text
+    var
+        SnapshotArray: JsonArray;
+        SnapshotToken: JsonToken;
+        SnapshotObject: JsonObject;
+        ValueToken: JsonToken;
+        ResultArray: JsonArray;
+        ResultObject: JsonObject;
+        SourceObject: JsonObject;
+        DestinationObject: JsonObject;
+        ResultText: Text;
+        ItemNo: Code[20];
+        DocumentNo: Code[20];
+        LocationCode: Code[10];
+        NewLocationCode: Code[10];
+        TaskNo: Code[20];
+        NewJobNo: Code[20];
+        NewJobTaskNo: Code[20];
+        LineNo: Integer;
+        AppliesFromEntry: Integer;
+        AppliesToEntry: Integer;
+        SourceAnchorEntry: Integer;
+        QuantityPosted: Decimal;
+        SourceEntryConsumable: Integer;
+        RemainingQty: Decimal;
+        DestEntryNo: Integer;
+        HasExplicitSource: Boolean;
+    begin
+        if (BatchSnapshotJson = '') or (not SnapshotArray.ReadFrom(BatchSnapshotJson)) then
+            exit('[]');
+
+        foreach SnapshotToken in SnapshotArray do begin
+            if not SnapshotToken.IsObject() then
+                continue;
+
+            SnapshotObject := SnapshotToken.AsObject();
+            Clear(ItemNo);
+            Clear(DocumentNo);
+            Clear(LocationCode);
+            Clear(NewLocationCode);
+            Clear(TaskNo);
+            Clear(NewJobNo);
+            Clear(NewJobTaskNo);
+            LineNo := 0;
+            AppliesFromEntry := 0;
+            AppliesToEntry := 0;
+            SourceAnchorEntry := 0;
+            QuantityPosted := 0;
+            SourceEntryConsumable := 0;
+            RemainingQty := 0;
+            DestEntryNo := 0;
+            HasExplicitSource := false;
+
+            if SnapshotObject.Get('itemNo', ValueToken) then
+                ItemNo := CopyStr(ValueToken.AsValue().AsText(), 1, MaxStrLen(ItemNo));
+            if SnapshotObject.Get('documentNo', ValueToken) then
+                DocumentNo := CopyStr(ValueToken.AsValue().AsText(), 1, MaxStrLen(DocumentNo));
+            if SnapshotObject.Get('locationCode', ValueToken) then
+                LocationCode := CopyStr(ValueToken.AsValue().AsText(), 1, MaxStrLen(LocationCode));
+            if SnapshotObject.Get('newLocationCode', ValueToken) then
+                NewLocationCode := CopyStr(ValueToken.AsValue().AsText(), 1, MaxStrLen(NewLocationCode));
+            if SnapshotObject.Get('taskNo', ValueToken) then
+                TaskNo := CopyStr(ValueToken.AsValue().AsText(), 1, MaxStrLen(TaskNo));
+            if SnapshotObject.Get('newJobNo', ValueToken) then
+                NewJobNo := CopyStr(ValueToken.AsValue().AsText(), 1, MaxStrLen(NewJobNo));
+            if SnapshotObject.Get('newJobTaskNo', ValueToken) then
+                NewJobTaskNo := CopyStr(ValueToken.AsValue().AsText(), 1, MaxStrLen(NewJobTaskNo));
+            if SnapshotObject.Get('lineNo', ValueToken) then
+                LineNo := ValueToken.AsValue().AsInteger();
+            if SnapshotObject.Get('appliesFromEntry', ValueToken) then
+                AppliesFromEntry := ValueToken.AsValue().AsInteger();
+            if SnapshotObject.Get('appliesToEntry', ValueToken) then
+                AppliesToEntry := ValueToken.AsValue().AsInteger();
+            if SnapshotObject.Get('quantity', ValueToken) then
+                Evaluate(QuantityPosted, ValueToken.AsValue().AsText());
+
+            SourceAnchorEntry := AppliesFromEntry;
+            if SourceAnchorEntry = 0 then
+                SourceAnchorEntry := AppliesToEntry;
+
+            HasExplicitSource := SourceAnchorEntry <> 0;
+
+            DestEntryNo := FindPostedDestinationEntry(ItemLedgerEntry, ItemNo, DocumentNo, NewLocationCode, QuantityPosted);
+            SourceEntryConsumable := FindConsumableSourceEntry(ItemNo, LocationCode, SourceAnchorEntry);
+            RemainingQty := GetRemainingQuantity(SourceEntryConsumable);
+
+            Clear(ResultObject);
+            Clear(SourceObject);
+            Clear(DestinationObject);
+
+            ResultObject.Add('lineNo', LineNo);
+            ResultObject.Add('itemNo', ItemNo);
+            ResultObject.Add('documentNo', DocumentNo);
+            ResultObject.Add('quantityPosted', QuantityPosted);
+
+            SourceObject.Add('locationCode', LocationCode);
+            SourceObject.Add('taskNo', TaskNo);
+            SourceObject.Add('entryNoOriginal', SourceAnchorEntry);
+            SourceObject.Add('entryNoConsumible', SourceEntryConsumable);
+            SourceObject.Add('remainingQuantity', RemainingQty);
+
+            DestinationObject.Add('locationCode', NewLocationCode);
+            DestinationObject.Add('jobNo', NewJobNo);
+            DestinationObject.Add('jobTaskNo', NewJobTaskNo);
+            DestinationObject.Add('entryNoPosted', DestEntryNo);
+
+            ResultObject.Add('source', SourceObject);
+            ResultObject.Add('destination', DestinationObject);
+            ResultObject.Add('ok', HasExplicitSource and (SourceEntryConsumable <> 0));
+
+            if not HasExplicitSource then
+                ResultObject.Add('message', '❌ No se recibió appliesFromEntry/appliesToEntry; mapeo no confiable')
+            else
+                if SourceEntryConsumable = 0 then
+                    ResultObject.Add('message', '❌ El entry ancla no quedó consumible tras el post')
                 else
-                    FirstEntry := false;
+                    ResultObject.Add('message', StrSubstNo('✅ Entry consumible %1 con remanente %2', SourceEntryConsumable, Format(RemainingQty, 0, 9)));
 
-                JsonArray += StrSubstNo(
-                    '{"itemNo":"%1","entryNo":%2,"locationCode":"%3","quantity":"%4","documentNo":"%5"}',
-                    ItemLedgerEntry."Item No.",
-                    ItemLedgerEntry."Entry No.",
-                    ItemLedgerEntry."Location Code",
-                    Format(ItemLedgerEntry.Quantity, 0, 9),
-                    ItemLedgerEntry."Document No."
-                );
-            until ItemLedgerEntry.Next() = 0;
+            ResultArray.Add(ResultObject);
+        end;
 
-        JsonArray += ']';
-        exit(JsonArray);
+        ResultArray.WriteTo(ResultText);
+        exit(ResultText);
+    end;
+
+    local procedure FindPostedDestinationEntry(var ItemLedgerEntry: Record "Item Ledger Entry"; ItemNo: Code[20]; DocumentNo: Code[20]; NewLocationCode: Code[10]; QuantityPosted: Decimal): Integer
+    begin
+        ItemLedgerEntry.Reset();
+        ItemLedgerEntry.SetCurrentKey("Entry No.");
+        ItemLedgerEntry.Ascending(false);
+        ItemLedgerEntry.SetRange("Item No.", ItemNo);
+        ItemLedgerEntry.SetRange("Document No.", DocumentNo);
+        ItemLedgerEntry.SetRange("Location Code", NewLocationCode);
+        ItemLedgerEntry.SetRange(Positive, true);
+        if QuantityPosted <> 0 then
+            ItemLedgerEntry.SetRange(Quantity, Abs(QuantityPosted));
+
+        if ItemLedgerEntry.FindFirst() then
+            exit(ItemLedgerEntry."Entry No.");
+
+        exit(0);
+    end;
+
+    local procedure FindConsumableSourceEntry(ItemNo: Code[20]; SourceLocationCode: Code[10]; PreferredEntryNo: Integer): Integer
+    var
+        SourceILE: Record "Item Ledger Entry";
+    begin
+        // When caller provides applies-from entry, map strictly to that entry only.
+        // This avoids selecting unrelated open entries in the same location.
+        if PreferredEntryNo <> 0 then begin
+            if SourceILE.Get(PreferredEntryNo) then
+                if (SourceILE."Item No." = ItemNo) and
+                   (SourceILE."Location Code" = SourceLocationCode) and
+                   SourceILE.Positive and
+                   (SourceILE."Remaining Quantity" > 0)
+                then
+                    exit(SourceILE."Entry No.");
+
+            exit(0);
+        end;
+
+        SourceILE.Reset();
+        SourceILE.SetCurrentKey("Item No.", Open, Positive, "Location Code", "Variant Code", "Drop Shipment", "Package No.", "Lot No.", "Serial No.", "Posting Date");
+        SourceILE.SetRange("Item No.", ItemNo);
+        SourceILE.SetRange("Location Code", SourceLocationCode);
+        SourceILE.SetRange(Open, true);
+        SourceILE.SetRange(Positive, true);
+        SourceILE.SetFilter("Remaining Quantity", '>%1', 0);
+        if SourceILE.FindFirst() then
+            exit(SourceILE."Entry No.");
+
+        exit(0);
+    end;
+
+    local procedure GetRemainingQuantity(EntryNo: Integer): Decimal
+    var
+        ItemLedgerEntry: Record "Item Ledger Entry";
+    begin
+        if (EntryNo <> 0) and ItemLedgerEntry.Get(EntryNo) then
+            exit(ItemLedgerEntry."Remaining Quantity");
+
+        exit(0);
     end;
 }

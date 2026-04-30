@@ -52,7 +52,15 @@ page 50101 "GJW Item Journal Lines API"
                     ApplicationArea = All;
                     Editable = false; // <- cambia a true si quieres permitir edición manual
                 }
-                field(taskNo; Rec."Task No.") { ApplicationArea = All; }
+                field(taskNo; TaskNoText)
+                {
+                    ApplicationArea = All;
+
+                    trigger OnValidate()
+                    begin
+                        SyncApiFieldsToRecord();
+                    end;
+                }
 
                 field(locationCode; Rec."Location Code") { ApplicationArea = All; }
                 field(inventoryPostingGroup; Rec."Inventory Posting Group") { ApplicationArea = All; }
@@ -177,7 +185,33 @@ page 50101 "GJW Item Journal Lines API"
                 }
 
                 field(jobNo; Rec."Job No.") { ApplicationArea = All; }
-                field(jobTaskNo; Rec."Job Task No.") { ApplicationArea = All; }
+                field(jobTaskNo; JobTaskNoText)
+                {
+                    ApplicationArea = All;
+
+                    trigger OnValidate()
+                    begin
+                        SyncApiFieldsToRecord();
+                    end;
+                }
+                field(newJobNo; NewJobNoText)
+                {
+                    ApplicationArea = All;
+
+                    trigger OnValidate()
+                    begin
+                        SyncApiFieldsToRecord();
+                    end;
+                }
+                field(newJobTaskNo; NewJobTaskNoText)
+                {
+                    ApplicationArea = All;
+
+                    trigger OnValidate()
+                    begin
+                        SyncApiFieldsToRecord();
+                    end;
+                }
                 field(jobPurchase; Rec."Job Purchase") { ApplicationArea = All; }
                 field(jobContractEntryNo; Rec."Job Contract Entry No.")
                 {
@@ -372,6 +406,8 @@ page 50101 "GJW Item Journal Lines API"
     // Prevenir líneas vacías desde Power Apps
     trigger OnInsertRecord(BelowxRec: Boolean): Boolean
     begin
+        SyncApiFieldsToRecord();
+
         // Validar que al menos tenga campos críticos antes de permitir la inserción
         if (Rec."Item No." = '') or
            (Rec."Journal Template Name" = '') or
@@ -381,10 +417,17 @@ page 50101 "GJW Item Journal Lines API"
         exit(true);
     end;
 
+    trigger OnAfterGetRecord()
+    begin
+        SyncRecordToApiFields();
+    end;
+
     trigger OnAfterGetCurrRecord()
     var
         ItemJnlLine: Record "Item Journal Line";
     begin
+        SyncRecordToApiFields();
+
         // Eliminar líneas vacías que pudieron crearse con DelayedInsert
         ItemJnlLine.SetRange("Journal Template Name", Rec."Journal Template Name");
         ItemJnlLine.SetRange("Journal Batch Name", Rec."Journal Batch Name");
@@ -416,4 +459,26 @@ page 50101 "GJW Item Journal Lines API"
 
         exit(StrSubstNo('Batch registrado exitosamente: %1 - %2 líneas procesadas', BatchName, LineCount));
     end;
+
+    local procedure SyncApiFieldsToRecord()
+    begin
+        Rec.Validate("Task No.", CopyStr(TaskNoText, 1, MaxStrLen(Rec."Task No.")));
+        Rec.Validate("Job Task No.", CopyStr(JobTaskNoText, 1, MaxStrLen(Rec."Job Task No.")));
+        Rec.Validate("New Job No.", CopyStr(NewJobNoText, 1, MaxStrLen(Rec."New Job No.")));
+        Rec.Validate("New Job Task No.", CopyStr(NewJobTaskNoText, 1, MaxStrLen(Rec."New Job Task No.")));
+    end;
+
+    local procedure SyncRecordToApiFields()
+    begin
+        TaskNoText := Rec."Task No.";
+        JobTaskNoText := Rec."Job Task No.";
+        NewJobNoText := Rec."New Job No.";
+        NewJobTaskNoText := Rec."New Job Task No.";
+    end;
+
+    var
+        TaskNoText: Text[20];
+        JobTaskNoText: Text[20];
+        NewJobNoText: Text[20];
+        NewJobTaskNoText: Text[20];
 }

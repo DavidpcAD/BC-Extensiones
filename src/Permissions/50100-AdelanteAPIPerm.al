@@ -33,6 +33,7 @@ permissionset 50100 "Adelante API RIMD"
         tabledata "GJW Post Job Journal Cmd" = RIMD,
         tabledata "GJW Item Avail Bulk Result" = RIMD,
         tabledata "GJW Item Avail Bulk Request" = RIMD,
+        tabledata "GJW Item Stock Check Req" = RIMD,
         tabledata "GJW Bulk Buffer" = RIMD,
 
 
@@ -57,6 +58,7 @@ permissionset 50100 "Adelante API RIMD"
         page "GJW Init ItemAvailBuffer Page" = X,
         page "GJW WorksDecomp Bulk Single" = X,
         page "GJW Item Avail Bulk Single" = X,
+        page "GJW Item Stock Check API" = X,
         page "GJW Item Avail Bulk Result API" = X,
         page "GJW Bulk Operations API" = X,
         page "GJW WorkLines Bulk Singleton" = X,
