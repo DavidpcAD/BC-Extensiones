@@ -1,0 +1,168 @@
+// ====================================================================
+// CÓDIGO POWER APPS - TRANSFERENCIAS DE ALMACÉN BULK
+// ====================================================================
+// Transfiere materiales de almacén origen a almacén/obra destino
+// Usa API: itemTransferBulks (Singleton)
+// ====================================================================
+
+// 📋 COLECCIÓN DE EJEMPLO (debes tener tus datos en una colección similar)
+// colTransferencias = [{
+//     itemNo: "M01-0013",
+//     locationCode: "ALM-GRAL",
+//     newLocationCode: "VN-D.17",
+//     quantity: 3,
+//     taskNo: "001",
+//     description: "Transferencia a obra VN-D.17"
+// }, ...]
+
+// 🎯 PASO 1: Construir el JSON con todas las transferencias
+Set(varTransfersJSON, 
+    "[" & Concat(
+        ForAll(
+            colTransferencias,
+            "{" &
+            """itemNo"":""" & ThisRecord.itemNo & """," &
+            """locationCode"":""" & ThisRecord.locationCode & """," &
+            """newLocationCode"":""" & ThisRecord.newLocationCode & """," &
+            """quantity"":" & Text(ThisRecord.quantity) & "," &
+            """taskNo"":""" & If(IsBlank(ThisRecord.taskNo), "", ThisRecord.taskNo) & """," &
+            """description"":""" & If(IsBlank(ThisRecord.description), "Transferencia", ThisRecord.description) & """" &
+            "}"
+        ),
+        ","
+    ) & "]"
+);
+
+// 🚀 PASO 2: Enviar al API en UNA sola llamada
+Set(varResultado, 
+    Patch(
+        itemTransferBulks,
+        First(itemTransferBulks),
+        {
+            transfersJSON: varTransfersJSON,
+            ejecutar: true
+        }
+    )
+);
+
+// 📊 PASO 3: Mostrar resultado
+If(
+    StartsWith(varResultado.resultado, "✅"),
+    
+    // ✅ ÉXITO
+    Notify(varResultado.resultado, NotificationType.Success);
+    
+    // Aquí puedes agregar lógica adicional:
+    // - Limpiar colTransferencias
+    // - Navegar a otra pantalla
+    // - Refrescar datos
+    ,
+    
+    // ❌ ERROR
+    Notify("Error: " & varResultado.resultado, NotificationType.Error)
+);
+
+
+// ====================================================================
+// EJEMPLO COMPLETO CON GALERÍA
+// ====================================================================
+// Si tienes una galería de movimientos de inventario (Item Ledger Entry)
+// y quieres transferir los seleccionados:
+
+// Botón: "Transferir Seleccionados"
+// OnSelect:
+
+// 1. Construir colección de transferencias
+ClearCollect(
+    colTransferencias,
+    ForAll(
+        Filter(galMovimientos.AllItems, ThisRecord.IsSelected = true),
+        {
+            itemNo: ThisRecord.itemNo,
+            locationCode: ThisRecord.locationCode,
+            newLocationCode: cmbAlmacenDestino.Selected.code,  // Combo con destino
+            quantity: Abs(ThisRecord.quantity),  // Cantidad positiva
+            taskNo: txtTaskNo.Text,  // Opcional
+            description: "Transfer desde " & ThisRecord.locationCode
+        }
+    )
+);
+
+// 2. Construir JSON
+Set(varTransfersJSON, 
+    "[" & Concat(
+        colTransferencias,
+        "{" &
+        """itemNo"":""" & itemNo & """," &
+        """locationCode"":""" & locationCode & """," &
+        """newLocationCode"":""" & newLocationCode & """," &
+        """quantity"":" & Text(quantity) & "," &
+        """taskNo"":""" & taskNo & """," &
+        """description"":""" & description & """" &
+        "}"
+    , ",") & "]"
+);
+
+// 3. Ejecutar transferencia
+Set(varResultado, 
+    Patch(
+        itemTransferBulks,
+        First(itemTransferBulks),
+        {
+            transfersJSON: varTransfersJSON,
+            ejecutar: true
+        }
+    )
+);
+
+// 4. Mostrar resultado y limpiar
+If(
+    StartsWith(varResultado.resultado, "✅"),
+    Notify(varResultado.resultado, NotificationType.Success);
+    Clear(colTransferencias);
+    // Refrescar galería o navegar
+    ,
+    Notify("Error: " & varResultado.resultado, NotificationType.Error)
+);
+
+
+// ====================================================================
+// TRANSFERENCIA SIMPLE (UNA SOLA LÍNEA)
+// ====================================================================
+// Si solo necesitas transferir 1 producto:
+
+Patch(
+    itemTransferBulks,
+    First(itemTransferBulks),
+    {
+        transfersJSON: "[{""itemNo"":""M01-0013"",""locationCode"":""ALM-GRAL"",""newLocationCode"":""VN-D.17"",""quantity"":3,""taskNo"":""001"",""description"":""Transfer a obra""}]",
+        ejecutar: true
+    }
+);
+
+
+// ====================================================================
+// NOTAS IMPORTANTES
+// ====================================================================
+// ✅ El API automáticamente:
+//    - Crea las líneas en Item Reclass. Journal (TRANSFEREN/GENERICO)
+//    - Ejecuta el posting
+//    - Limpia el batch después
+//
+// ✅ Campos obligatorios:
+//    - itemNo
+//    - locationCode (origen)
+//    - newLocationCode (destino)
+//    - quantity (mayor a 0)
+//
+// ✅ Campos opcionales:
+//    - taskNo (si va a una obra)
+//    - description
+//    - postingDate (si no se envía, usa hoy)
+//    - documentNo (si no se envía, Business Central lo autogenera)
+//    - variantCode (si el producto tiene variantes)
+//
+// ⚠️ Si hay algún error, NO se registra nada (todo o nada)
+//
+// 🎯 Endpoint API:
+//    https://api.businesscentral.dynamics.com/.../itemTransferBulks

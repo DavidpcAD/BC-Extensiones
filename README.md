@@ -15,6 +15,16 @@
 
 Extensión de Business Central que proporciona APIs REST personalizadas para la gestión de proyectos de construcción y control de inventarios, con integración Power Apps mediante Power Automate.
 
+## 🗂️ Mapa Rápido del Repositorio
+
+- `src/`: código AL (pages, codeunits, tables, extensions)
+- `docs/api/`: documentación de endpoints API
+- `docs/powerapps/`: ejemplos de integración para Power Apps
+- `docs/guides/`: guías operativas, changelog y documentación general
+- `scripts/`: scripts de validación y apoyo
+- `connectors/`: contratos OpenAPI para conectores
+- `artifacts/`: paquetes `.app` de referencia local
+
 ### Características Principales
 
 - **APIs OData v4** para integración con Power Apps y Power Automate
