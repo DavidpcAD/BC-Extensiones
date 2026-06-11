@@ -119,6 +119,11 @@ codeunit 50186 "GJW Material Consumption"
                                 JobJnlLine."Shortcut Dimension 1 Code" := ItemLedgerEntry."Global Dimension 1 Code";
                                 JobJnlLine."Shortcut Dimension 2 Code" := ItemLedgerEntry."Global Dimension 2 Code";
 
+                                // El proyecto puede exigir una dimensión obligatoria (p.ej. CC = "Igual al código").
+                                // Como aquí Job No. y Location Code se asignan directo (sin Validate), reforzamos
+                                // las dimensiones obligatorias del Job sobre la línea antes de postear.
+                                ForceJobDimensions(JobJnlLine, JobNo);
+
                                 if JobJnlLine.Insert(true) then begin
                                     // Post
                                     JobJnlPostLine.RunWithCheck(JobJnlLine);
@@ -179,6 +184,57 @@ codeunit 50186 "GJW Material Consumption"
 
         // Devolver solo jsonResults como arreglo (texto JSON) para Power Apps
         exit(Format(Arr));
+    end;
+
+    // Fuerza sobre la Job Journal Line las dimensiones definidas como obligatorias en el
+    // proyecto (Default Dimension del Job con valor fijo, p.ej. CC = "Igual al código").
+    // Espeja la misma lógica del orquestador (codeunit 50220) para el paso Reverse.
+    local procedure ForceJobDimensions(var JobJnlLine: Record "Job Journal Line"; JobNo: Code[20])
+    var
+        DefaultDim: Record "Default Dimension";
+        DimensionValue: Record "Dimension Value";
+        DimSetEntry: Record "Dimension Set Entry";
+        TempDimSetEntry: Record "Dimension Set Entry" temporary;
+        DimMgt: Codeunit DimensionManagement;
+        EntryExists: Boolean;
+    begin
+        // Cargar las dimensiones actuales de la línea.
+        if JobJnlLine."Dimension Set ID" <> 0 then begin
+            DimSetEntry.SetRange("Dimension Set ID", JobJnlLine."Dimension Set ID");
+            if DimSetEntry.FindSet() then
+                repeat
+                    TempDimSetEntry := DimSetEntry;
+                    TempDimSetEntry.Insert();
+                until DimSetEntry.Next() = 0;
+        end;
+
+        // Sobrescribir con las dimensiones obligatorias (valor fijo) del proyecto.
+        DefaultDim.SetRange("Table ID", Database::Job);
+        DefaultDim.SetRange("No.", JobNo);
+        DefaultDim.SetFilter("Dimension Value Code", '<>%1', '');
+        if DefaultDim.FindSet() then
+            repeat
+                TempDimSetEntry.Reset();
+                TempDimSetEntry.SetRange("Dimension Code", DefaultDim."Dimension Code");
+                EntryExists := TempDimSetEntry.FindFirst();
+                TempDimSetEntry.Reset();
+
+                if not EntryExists then begin
+                    TempDimSetEntry.Init();
+                    TempDimSetEntry."Dimension Code" := DefaultDim."Dimension Code";
+                end;
+
+                TempDimSetEntry."Dimension Value Code" := DefaultDim."Dimension Value Code";
+                if DimensionValue.Get(DefaultDim."Dimension Code", DefaultDim."Dimension Value Code") then
+                    TempDimSetEntry."Dimension Value ID" := DimensionValue."Dimension Value ID";
+
+                if EntryExists then
+                    TempDimSetEntry.Modify()
+                else
+                    TempDimSetEntry.Insert();
+            until DefaultDim.Next() = 0;
+
+        JobJnlLine."Dimension Set ID" := DimMgt.GetDimensionSetID(TempDimSetEntry);
     end;
 
     local procedure GetMaterialDescription(ItemLedgerEntry: Record "Item Ledger Entry"; var Item: Record Item; var ItemVariant: Record "Item Variant"): Text[100]

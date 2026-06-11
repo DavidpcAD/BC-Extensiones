@@ -35,6 +35,8 @@ permissionset 50100 "Adelante API RIMD"
         tabledata "GJW Item Avail Bulk Request" = RIMD,
         tabledata "GJW Item Stock Check Req" = RIMD,
         tabledata "GJW Bulk Buffer" = RIMD,
+        tabledata "GJW Material Operation" = RIMD,
+        tabledata "GJW Material Operation Step" = RIMD,
 
 
 
@@ -63,6 +65,8 @@ permissionset 50100 "Adelante API RIMD"
         page "GJW Bulk Operations API" = X,
         page "GJW WorkLines Bulk Singleton" = X,
         page "GJW Item Transfer Singleton" = X,
+        page "GJW Material Operation API" = X,
+        page "GJW Material Op Batch API" = X,
         page "Job Task API" = X,
         page "GJW Job API" = X,
         page "Job Journal Batch API" = X,
@@ -85,6 +89,8 @@ permissionset 50100 "Adelante API RIMD"
         codeunit "GJW Warehouse Quantity POST" = X,
         codeunit "Job Journal Line AutoNo" = X,
         codeunit "Item Journal Line AutoNo" = X,
+        codeunit "GJW Material Op Orchestrator" = X,
+        codeunit "GJW Material Op Bulk Proc" = X,
         codeunit "GJW Item Journal Post Handler" = X; // ⭐ Automatización Warehouse Quantity
 
 }

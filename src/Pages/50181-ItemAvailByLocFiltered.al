@@ -97,7 +97,6 @@ page 50181 "Item Avail. by Loc Filtered"
         if VariantCodeFilter <> '' then
             ItemLedgerEntry.SetFilter("Variant Code", VariantCodeFilter);
         ItemLedgerEntry.SetFilter("Location Code", LocationCodeFilter);
-        ItemLedgerEntry.SetRange("Posting Date", 0D, Today());
         ItemLedgerEntry.SetCurrentKey("Item No.", "Variant Code", "Location Code");
 
         if ItemLedgerEntry.FindSet() then begin
@@ -111,7 +110,7 @@ page 50181 "Item Avail. by Loc Filtered"
                     TempBuffer.Insert();
                 end;
 
-                TempBuffer.TotalQuantity += ItemLedgerEntry."Remaining Quantity";
+                TempBuffer.TotalQuantity += ItemLedgerEntry.Quantity;
                 TempBuffer.Modify();
             until ItemLedgerEntry.Next() = 0;
         end;
