@@ -41,6 +41,10 @@ page 50208 "GJW Item Avail By Item Single"
             {
                 Caption = 'Location Filter';
             }
+            field(asOfDate; Rec."As Of Date")
+            {
+                Caption = 'As Of Date';
+            }
             field(requestId; Rec."Request Id")
             {
                 Caption = 'Request Id';
@@ -69,6 +73,7 @@ page 50208 "GJW Item Avail By Item Single"
         Item: Record Item;
         RequestGuid: Guid;
         LocationFilter: Text;
+        AsOfDate: Date;
         ResultJson: Text;
     begin
         if Rec."Item No." = '' then
@@ -80,16 +85,20 @@ page 50208 "GJW Item Avail By Item Single"
         if LocationFilter = '' then
             LocationFilter := 'ALM*';
 
+        AsOfDate := Rec."As Of Date";
+        if AsOfDate = 0D then
+            AsOfDate := Today();
+
         RequestGuid := CreateGuid();
         Rec."Requested At" := CurrentDateTime();
-        ResultJson := ProcessAndBuildJson(Rec."Item No.", Rec."Variant Code", LocationFilter, Item."Base Unit of Measure");
+        ResultJson := ProcessAndBuildJson(Rec."Item No.", Rec."Variant Code", LocationFilter, AsOfDate, Item."Base Unit of Measure");
         Rec."Request Id" := DelChr(Format(RequestGuid), '=', '{}');
         Rec."Result Json" := CopyStr(ResultJson, 1, MaxStrLen(Rec."Result Json"));
         Rec.Status := 'OK';
         exit(true);
     end;
 
-    local procedure ProcessAndBuildJson(ItemNo: Code[20]; VariantCode: Code[10]; LocationFilter: Text; UnitOfMeasure: Code[10]): Text
+    local procedure ProcessAndBuildJson(ItemNo: Code[20]; VariantCode: Code[10]; LocationFilter: Text; AsOfDate: Date; UnitOfMeasure: Code[10]): Text
     var
         ItemLedgerEntry: Record "Item Ledger Entry";
         Location: Record Location;
@@ -104,10 +113,9 @@ page 50208 "GJW Item Avail By Item Single"
     begin
         ItemLedgerEntry.SetCurrentKey("Item No.", "Variant Code", "Location Code");
         ItemLedgerEntry.SetRange("Item No.", ItemNo);
-        if VariantCode <> '' then
-            ItemLedgerEntry.SetRange("Variant Code", VariantCode);
+        ItemLedgerEntry.SetRange("Variant Code", VariantCode);
         ItemLedgerEntry.SetFilter("Location Code", LocationFilter);
-        ItemLedgerEntry.SetRange("Posting Date", 0D, Today());
+        ItemLedgerEntry.SetRange("Posting Date", 0D, AsOfDate);
 
         if ItemLedgerEntry.FindSet() then
             repeat

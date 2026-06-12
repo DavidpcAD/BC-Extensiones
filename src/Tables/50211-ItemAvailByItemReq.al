@@ -53,6 +53,11 @@ table 50211 "GJW Item Avail By Item Req"
             Caption = 'Result JSON';
             DataClassification = CustomerContent;
         }
+        field(10; "As Of Date"; Date)
+        {
+            Caption = 'As Of Date';
+            DataClassification = CustomerContent;
+        }
     }
 
     keys
