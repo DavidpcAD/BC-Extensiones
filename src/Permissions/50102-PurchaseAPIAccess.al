@@ -11,6 +11,8 @@ permissionset 50102 "GJW Purch API"
         // Acceso a las páginas API
         page "GJW Purchase Orders API" = X,
         page "GJW Purchase Lines API" = X,
+        page "GJW Purchase Quotes API" = X,
+        page "GJW Purchase Quote Lines API" = X,
         page "GJW Post Purchase Order API" = X,
 
         // Acceso al codeunit de posting
