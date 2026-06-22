@@ -15,8 +15,9 @@ permissionset 50102 "GJW Purch API"
         page "GJW Purchase Quote Lines API" = X,
         page "GJW Post Purchase Order API" = X,
 
-        // Acceso al codeunit de posting
+        // Acceso a los codeunits de posting / preview
         codeunit "GJW Purchase Post Processor" = X,
+        codeunit "GJW Purch Posting Preview" = X,
 
         // Acceso a tablas base necesarias
         tabledata "Purchase Header" = RIMD,
@@ -24,6 +25,17 @@ permissionset 50102 "GJW Purch API"
         tabledata "Purch. Rcpt. Header" = R,
         tabledata "Purch. Inv. Header" = R,
 
-        // Codeunit estándar de posting
-        codeunit "Purch.-Post" = X;
+        // Lectura de ledgers para la vista previa (Preview Posting)
+        tabledata "G/L Entry" = R,
+        tabledata "VAT Entry" = R,
+        tabledata "Item Ledger Entry" = R,
+        tabledata "Value Entry" = R,
+        tabledata "Vendor Ledger Entry" = R,
+        tabledata "Detailed Vendor Ledg. Entry" = R,
+
+        // Codeunits estándar de posting / preview
+        codeunit "Purch.-Post" = X,
+        codeunit "Purch.-Post (Yes/No)" = X,
+        codeunit "Gen. Jnl.-Post Preview" = X,
+        codeunit "Posting Preview Event Handler" = X;
 }

@@ -27,6 +27,7 @@ codeunit 50114 "GJW WorksDecomp Bulk"
         TaskNo: Code[50];
         TaskTypeTxt: Code[50];
         Description: Text[250];
+        SourceCodeTxt: Code[50];
         UnitCost: Decimal;
         UnitAmount: Decimal;
         LineAmount: Decimal;
@@ -57,6 +58,7 @@ codeunit 50114 "GJW WorksDecomp Bulk"
                         Clear(TaskNo);
                         Clear(TaskTypeTxt);
                         Clear(Description);
+                        Clear(SourceCodeTxt);
                         Clear(UnitCost);
                         Clear(UnitAmount);
                         Clear(LineAmount);
@@ -69,17 +71,44 @@ codeunit 50114 "GJW WorksDecomp Bulk"
                         if Obj.Get('lineNo', Val) and (not Val.AsValue().IsNull()) then LineNo := Val.AsValue().AsInteger();
                         if Obj.Get('taskNo', Val) and (not Val.AsValue().IsNull()) then TaskNo := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(TaskNo));
                         if Obj.Get('taskType', Val) and (not Val.AsValue().IsNull()) then TaskTypeTxt := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(TaskTypeTxt));
-                        if Obj.Get('description', Val) and (not Val.AsValue().IsNull()) then Description := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(Description));
+                        if Obj.Get('sourceCode', Val) and (not Val.AsValue().IsNull()) then SourceCodeTxt := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(SourceCodeTxt));
+                        if (SourceCodeTxt = '') and Obj.Get('source', Val) and (not Val.AsValue().IsNull()) then SourceCodeTxt := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(SourceCodeTxt));
+                        if (SourceCodeTxt = '') and Obj.Get('codigoFuente', Val) and (not Val.AsValue().IsNull()) then SourceCodeTxt := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(SourceCodeTxt));
+                        if Obj.Get('description', Val) and (not Val.AsValue().IsNull()) then
+                            Description := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(Description))
+                        else
+                            if Obj.Get('itemDescription', Val) and (not Val.AsValue().IsNull()) then
+                                Description := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(Description));
+                        if (Description = '') and Obj.Get('descripcion', Val) and (not Val.AsValue().IsNull()) then
+                            Description := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(Description));
+                        if (Description = '') and Obj.Get('name', Val) and (not Val.AsValue().IsNull()) then
+                            Description := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(Description));
                         if Obj.Get('unitCost', Val) and (not Val.AsValue().IsNull()) then UnitCost := Val.AsValue().AsDecimal();
                         if Obj.Get('unitAmount', Val) and (not Val.AsValue().IsNull()) then UnitAmount := Val.AsValue().AsDecimal();
                         if Obj.Get('lineAmount', Val) and (not Val.AsValue().IsNull()) then LineAmount := Val.AsValue().AsDecimal();
-                        if Obj.Get('no', Val) and (not Val.AsValue().IsNull()) then NoValue := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NoValue));
+                        if Obj.Get('no', Val) and (not Val.AsValue().IsNull()) then
+                            NoValue := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NoValue))
+                        else
+                            if Obj.Get('itemNo', Val) and (not Val.AsValue().IsNull()) then
+                                NoValue := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NoValue));
+                        if (NoValue = '') and Obj.Get('itemCode', Val) and (not Val.AsValue().IsNull()) then
+                            NoValue := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NoValue));
+                        if (NoValue = '') and Obj.Get('materialNo', Val) and (not Val.AsValue().IsNull()) then
+                            NoValue := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NoValue));
+                        if (NoValue = '') and Obj.Get('codigoArticulo', Val) and (not Val.AsValue().IsNull()) then
+                            NoValue := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NoValue));
+                        if (NoValue = '') and Obj.Get('codigoItem', Val) and (not Val.AsValue().IsNull()) then
+                            NoValue := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NoValue));
+                        if (NoValue = '') and Obj.Get('sourceCode', Val) and (not Val.AsValue().IsNull()) then
+                            NoValue := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NoValue));
+                        if (NoValue = '') and (SourceCodeTxt <> '') then
+                            NoValue := CopyStr(SourceCodeTxt, 1, MaxStrLen(NoValue));
                         if Obj.Get('codeOrder', Val) and (not Val.AsValue().IsNull()) then CodeOrder := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(CodeOrder));
                         if Obj.Get('variantCode', Val) and (not Val.AsValue().IsNull()) then VariantCode := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(VariantCode));
                         if Obj.Get('performance', Val) and (not Val.AsValue().IsNull()) then Performance := Val.AsValue().AsDecimal();
 
                         if WorksNo <> '' then begin
-                            if InitAndInsert(WorkLine, WorksNo, LineNo, TaskNo, TaskTypeTxt, Description, UnitCost, UnitAmount, LineAmount, NoValue, CodeOrder, VariantCode, Performance) then begin
+                            if InitAndInsert(WorkLine, WorksNo, LineNo, TaskNo, TaskTypeTxt, Description, SourceCodeTxt, UnitCost, UnitAmount, LineAmount, NoValue, CodeOrder, VariantCode, Performance) then begin
                                 InsCount += 1;
                                 Commit(); // ⚡ Commit después de cada inserción exitosa
                             end else
@@ -109,6 +138,7 @@ codeunit 50114 "GJW WorksDecomp Bulk"
                         Clear(TaskNo);
                         Clear(TaskTypeTxt);
                         Clear(Description);
+                        Clear(SourceCodeTxt);
                         Clear(UnitCost);
                         Clear(UnitAmount);
                         Clear(LineAmount);
@@ -136,16 +166,43 @@ codeunit 50114 "GJW WorksDecomp Bulk"
                             if Obj.Get('lineNo', Val) and (not Val.AsValue().IsNull()) then LineNo := Val.AsValue().AsInteger();
                             if Obj.Get('taskNo', Val) and (not Val.AsValue().IsNull()) then TaskNo := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(TaskNo));
                             if Obj.Get('taskType', Val) and (not Val.AsValue().IsNull()) then TaskTypeTxt := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(TaskTypeTxt));
-                            if Obj.Get('description', Val) and (not Val.AsValue().IsNull()) then Description := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(Description));
+                            if Obj.Get('sourceCode', Val) and (not Val.AsValue().IsNull()) then SourceCodeTxt := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(SourceCodeTxt));
+                            if (SourceCodeTxt = '') and Obj.Get('source', Val) and (not Val.AsValue().IsNull()) then SourceCodeTxt := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(SourceCodeTxt));
+                            if (SourceCodeTxt = '') and Obj.Get('codigoFuente', Val) and (not Val.AsValue().IsNull()) then SourceCodeTxt := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(SourceCodeTxt));
+                            if Obj.Get('description', Val) and (not Val.AsValue().IsNull()) then
+                                Description := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(Description))
+                            else
+                                if Obj.Get('itemDescription', Val) and (not Val.AsValue().IsNull()) then
+                                    Description := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(Description));
+                            if (Description = '') and Obj.Get('descripcion', Val) and (not Val.AsValue().IsNull()) then
+                                Description := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(Description));
+                            if (Description = '') and Obj.Get('name', Val) and (not Val.AsValue().IsNull()) then
+                                Description := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(Description));
                             if Obj.Get('unitCost', Val) and (not Val.AsValue().IsNull()) then UnitCost := Val.AsValue().AsDecimal();
                             if Obj.Get('unitAmount', Val) and (not Val.AsValue().IsNull()) then UnitAmount := Val.AsValue().AsDecimal();
                             if Obj.Get('lineAmount', Val) and (not Val.AsValue().IsNull()) then LineAmount := Val.AsValue().AsDecimal();
-                            if Obj.Get('no', Val) and (not Val.AsValue().IsNull()) then NoValue := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NoValue));
+                            if Obj.Get('no', Val) and (not Val.AsValue().IsNull()) then
+                                NoValue := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NoValue))
+                            else
+                                if Obj.Get('itemNo', Val) and (not Val.AsValue().IsNull()) then
+                                    NoValue := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NoValue));
+                            if (NoValue = '') and Obj.Get('itemCode', Val) and (not Val.AsValue().IsNull()) then
+                                NoValue := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NoValue));
+                            if (NoValue = '') and Obj.Get('materialNo', Val) and (not Val.AsValue().IsNull()) then
+                                NoValue := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NoValue));
+                            if (NoValue = '') and Obj.Get('codigoArticulo', Val) and (not Val.AsValue().IsNull()) then
+                                NoValue := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NoValue));
+                            if (NoValue = '') and Obj.Get('codigoItem', Val) and (not Val.AsValue().IsNull()) then
+                                NoValue := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NoValue));
+                            if (NoValue = '') and Obj.Get('sourceCode', Val) and (not Val.AsValue().IsNull()) then
+                                NoValue := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(NoValue));
+                            if (NoValue = '') and (SourceCodeTxt <> '') then
+                                NoValue := CopyStr(SourceCodeTxt, 1, MaxStrLen(NoValue));
                             if Obj.Get('codeOrder', Val) and (not Val.AsValue().IsNull()) then CodeOrder := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(CodeOrder));
                             if Obj.Get('variantCode', Val) and (not Val.AsValue().IsNull()) then VariantCode := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(VariantCode));
                             if Obj.Get('performance', Val) and (not Val.AsValue().IsNull()) then Performance := Val.AsValue().AsDecimal();
 
-                            if UpdateLine(WorkLine, WorksNo, LineNo, TaskNo, TaskTypeTxt, Description, UnitCost, UnitAmount, LineAmount, NoValue, CodeOrder, VariantCode, Performance) then begin
+                            if UpdateLine(WorkLine, WorksNo, LineNo, TaskNo, TaskTypeTxt, Description, SourceCodeTxt, UnitCost, UnitAmount, LineAmount, NoValue, CodeOrder, VariantCode, Performance) then begin
                                 UpdCount += 1;
                                 Commit(); // ⚡ Commit después de cada actualización
                             end else
@@ -203,34 +260,36 @@ codeunit 50114 "GJW WorksDecomp Bulk"
 
     // 🧩 Subprocedimientos
     local procedure InitAndInsert(var RecLine: Record "GomJob Works Decomposed Lines";
-        WorksNo: Code[20]; LineNo: Integer; TaskNo: Code[50]; TaskTypeTxt: Code[50]; Description: Text[250];
+        WorksNo: Code[20]; LineNo: Integer; TaskNo: Code[50]; TaskTypeTxt: Code[50]; Description: Text[250]; SourceCodeTxt: Code[50];
         UnitCost: Decimal; UnitAmount: Decimal; LineAmount: Decimal; NoValue: Code[50];
         CodeOrder: Code[50]; VariantCode: Code[50]; Performance: Decimal): Boolean
     begin
         RecLine.Init();
         if (LineNo = 0) then
             LineNo := GetNextLineNo(WorksNo);
-        if not SetLineFields(RecLine, WorksNo, LineNo, TaskNo, TaskTypeTxt, Description, UnitCost, UnitAmount, LineAmount, NoValue, CodeOrder, VariantCode, Performance, true) then
+        if not SetLineFields(RecLine, WorksNo, LineNo, TaskNo, TaskTypeTxt, Description, SourceCodeTxt, UnitCost, UnitAmount, LineAmount, NoValue, CodeOrder, VariantCode, Performance, true) then
             exit(false);
         exit(RecLine.Insert(true));
     end;
 
     local procedure UpdateLine(var RecLine: Record "GomJob Works Decomposed Lines";
-        WorksNo: Code[20]; LineNo: Integer; TaskNo: Code[50]; TaskTypeTxt: Code[50]; Description: Text[250];
+        WorksNo: Code[20]; LineNo: Integer; TaskNo: Code[50]; TaskTypeTxt: Code[50]; Description: Text[250]; SourceCodeTxt: Code[50];
         UnitCost: Decimal; UnitAmount: Decimal; LineAmount: Decimal; NoValue: Code[50];
         CodeOrder: Code[50]; VariantCode: Code[50]; Performance: Decimal): Boolean
     begin
-        if not SetLineFields(RecLine, WorksNo, LineNo, TaskNo, TaskTypeTxt, Description, UnitCost, UnitAmount, LineAmount, NoValue, CodeOrder, VariantCode, Performance, false) then
+        if not SetLineFields(RecLine, WorksNo, LineNo, TaskNo, TaskTypeTxt, Description, SourceCodeTxt, UnitCost, UnitAmount, LineAmount, NoValue, CodeOrder, VariantCode, Performance, false) then
             exit(false);
         exit(RecLine.Modify(true));
     end;
 
     local procedure SetLineFields(var RecLine: Record "GomJob Works Decomposed Lines";
-        WorksNo: Code[20]; LineNo: Integer; TaskNo: Code[50]; TaskTypeTxt: Code[50]; Description: Text[250];
+        WorksNo: Code[20]; LineNo: Integer; TaskNo: Code[50]; TaskTypeTxt: Code[50]; Description: Text[250]; SourceCodeTxt: Code[50];
         UnitCost: Decimal; UnitAmount: Decimal; LineAmount: Decimal; NoValue: Code[50];
         CodeOrder: Code[50]; VariantCode: Code[50]; Performance: Decimal; IsInsert: Boolean): Boolean
     var
         TaskTypeOpt: Option Posting,Heading,Total;
+        TaskTypeAsInt: Integer;
+        ItemRec: Record Item;
     begin
         // ⚡ Asignación directa en lugar de Validate para mayor velocidad
         RecLine."Works No." := WorksNo;
@@ -239,18 +298,37 @@ codeunit 50114 "GJW WorksDecomp Bulk"
         RecLine."Task No." := TaskNo;
 
         case UpperCase(TaskTypeTxt) of
-            'POSTING':
+            'POSTING', 'AUXILIAR', 'AUXILIARY', 'ITEM':
                 TaskTypeOpt := TaskTypeOpt::Posting;
-            'HEADING':
+            'HEADING', 'CABECERA', 'ENCABEZADO':
                 TaskTypeOpt := TaskTypeOpt::Heading;
-            'TOTAL':
+            'TOTAL', 'TOTALES':
                 TaskTypeOpt := TaskTypeOpt::Total;
             else
-                exit(false); // Retornar false en lugar de Error
+                if Evaluate(TaskTypeAsInt, TaskTypeTxt) then begin
+                    case TaskTypeAsInt of
+                        0:
+                            TaskTypeOpt := TaskTypeOpt::Posting;
+                        1:
+                            TaskTypeOpt := TaskTypeOpt::Heading;
+                        2:
+                            TaskTypeOpt := TaskTypeOpt::Total;
+                        else
+                            exit(false);
+                    end;
+                end else
+                    exit(false); // Retornar false en lugar de Error
         end;
 
         RecLine."Task Type" := TaskTypeOpt;
+        RecLine."Source Code" := SourceCodeTxt;
+        if (NoValue = '') and (SourceCodeTxt <> '') then
+            NoValue := CopyStr(SourceCodeTxt, 1, MaxStrLen(NoValue));
+        if (TaskTypeOpt = TaskTypeOpt::Posting) and (NoValue = '') then
+            exit(false);
         RecLine.Description := Description;
+        if (RecLine.Description = '') and (NoValue <> '') and ItemRec.Get(NoValue) then
+            RecLine.Description := CopyStr(ItemRec.Description, 1, MaxStrLen(RecLine.Description));
         RecLine."Unit Cost" := UnitCost;
         RecLine."Unit Amount" := UnitAmount;
         if LineAmount <> 0 then

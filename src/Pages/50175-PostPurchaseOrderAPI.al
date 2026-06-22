@@ -1,7 +1,22 @@
 // ════════════════════════════════════════════════════════════════════════════════
 // Page 50175 "GJW Post Purchase Order API"
-// Propósito: API Singleton para ejecutar posting de Pedidos de Compra (Receive + Invoice)
+// Propósito: API Singleton para Vista Previa y Registro (Receive + Invoice) de
+//            Pedidos de Compra.
 // Endpoint: /adelante_purchasing_v1.0_postPurchaseOrders
+//
+// El campo requestJSON acepta un campo "action":
+//   - "preview"        -> devuelve los asientos que se generarían + previewToken (no graba)
+//   - "post" u omitido -> registra. Enviar "previewToken" para confirmar que el
+//                         documento no cambió desde la vista previa.
+//
+// Ejemplo requestJSON (preview):
+//   {"action":"preview","purchaseOrderNo":"CP-000515","vendorInvoiceNo":"5706",
+//    "documentDate":"2025-12-04","postingDate":"2025-12-04",
+//    "lines":[{"lineSystemId":"<guid>","qtyToReceive":1}]}
+// Ejemplo requestJSON (post tras preview):
+//   {"action":"post","purchaseOrderNo":"CP-000515","vendorInvoiceNo":"5706",
+//    "documentDate":"2025-12-04","postingDate":"2025-12-04","previewToken":"123-456",
+//    "lines":[{"lineSystemId":"<guid>","qtyToReceive":1}]}
 // ════════════════════════════════════════════════════════════════════════════════
 page 50175 "GJW Post Purchase Order API"
 {
@@ -74,7 +89,8 @@ page 50175 "GJW Post Purchase Order API"
             exit;
         end;
 
-        ResponseJSON := PurchPostProc.PostPurchaseOrder(RequestJSON);
+        // Enruta a preview o post según el campo "action" del JSON.
+        ResponseJSON := PurchPostProc.Process(RequestJSON);
     end;
 
     var
