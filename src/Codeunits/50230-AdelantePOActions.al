@@ -93,6 +93,8 @@ codeunit 50230 "Adelante PO Actions"
         v: JsonToken;
         itm: Code[20];
         qty: Decimal;
+        variantCode: Code[10];
+        applyVariant: Boolean;
         postedNo: Code[20];
     begin
         GetOrder(PurchHeader, orderNo);
@@ -127,12 +129,23 @@ codeunit 50230 "Adelante PO Actions"
             if JObj.Get('itemNo', v) then itm := CopyStr(v.AsValue().AsText(), 1, MaxStrLen(itm)) else itm := '';
             qty := 0;
             if JObj.Get('qty', v) then qty := v.AsValue().AsDecimal();
+            // Variante opcional: si viene en el JSON, se usa para desambiguar cuando el
+            // mismo ítem aparece en varias líneas con distinta variante.
+            variantCode := '';
+            applyVariant := false;
+            if JObj.Get('variantCode', v) then
+                if not v.AsValue().IsNull() then begin
+                    variantCode := CopyStr(v.AsValue().AsText(), 1, MaxStrLen(variantCode));
+                    applyVariant := true;
+                end;
             if (itm <> '') and (qty > 0) then begin
                 PurchLine.Reset();
                 PurchLine.SetRange("Document Type", PurchLine."Document Type"::Order);
                 PurchLine.SetRange("Document No.", orderNo);
                 PurchLine.SetRange(Type, PurchLine.Type::Item);
                 PurchLine.SetRange("No.", itm);
+                if applyVariant then
+                    PurchLine.SetRange("Variant Code", variantCode);
                 PurchLine.SetFilter("Outstanding Quantity", '>0');
                 PurchLine.SetRange("Qty. to Receive", 0);
                 if PurchLine.FindFirst() then begin
@@ -169,6 +182,8 @@ codeunit 50230 "Adelante PO Actions"
         v: JsonToken;
         itm: Code[20];
         qty: Decimal;
+        variantCode: Code[10];
+        applyVariant: Boolean;
         postedNo: Code[20];
     begin
         GetOrder(PurchHeader, orderNo);
@@ -200,12 +215,23 @@ codeunit 50230 "Adelante PO Actions"
             if JObj.Get('itemNo', v) then itm := CopyStr(v.AsValue().AsText(), 1, MaxStrLen(itm)) else itm := '';
             qty := 0;
             if JObj.Get('qty', v) then qty := v.AsValue().AsDecimal();
+            // Variante opcional: si viene en el JSON, se usa para desambiguar cuando el
+            // mismo ítem aparece en varias líneas con distinta variante.
+            variantCode := '';
+            applyVariant := false;
+            if JObj.Get('variantCode', v) then
+                if not v.AsValue().IsNull() then begin
+                    variantCode := CopyStr(v.AsValue().AsText(), 1, MaxStrLen(variantCode));
+                    applyVariant := true;
+                end;
             if (itm <> '') and (qty > 0) then begin
                 PurchLine.Reset();
                 PurchLine.SetRange("Document Type", PurchLine."Document Type"::Order);
                 PurchLine.SetRange("Document No.", orderNo);
                 PurchLine.SetRange(Type, PurchLine.Type::Item);
                 PurchLine.SetRange("No.", itm);
+                if applyVariant then
+                    PurchLine.SetRange("Variant Code", variantCode);
                 PurchLine.SetFilter("Outstanding Quantity", '>0');
                 PurchLine.SetRange("Qty. to Receive", 0);
                 if PurchLine.FindFirst() then begin
@@ -239,6 +265,8 @@ codeunit 50230 "Adelante PO Actions"
         v: JsonToken;
         itm: Code[20];
         qty: Decimal;
+        variantCode: Code[10];
+        applyVariant: Boolean;
         postedNo: Code[20];
     begin
         GetOrder(PurchHeader, orderNo);
@@ -272,12 +300,23 @@ codeunit 50230 "Adelante PO Actions"
             if JObj.Get('itemNo', v) then itm := CopyStr(v.AsValue().AsText(), 1, MaxStrLen(itm)) else itm := '';
             qty := 0;
             if JObj.Get('qty', v) then qty := v.AsValue().AsDecimal();
+            // Variante opcional: si viene en el JSON, se usa para desambiguar cuando el
+            // mismo ítem aparece en varias líneas con distinta variante.
+            variantCode := '';
+            applyVariant := false;
+            if JObj.Get('variantCode', v) then
+                if not v.AsValue().IsNull() then begin
+                    variantCode := CopyStr(v.AsValue().AsText(), 1, MaxStrLen(variantCode));
+                    applyVariant := true;
+                end;
             if (itm <> '') and (qty > 0) then begin
                 PurchLine.Reset();
                 PurchLine.SetRange("Document Type", PurchLine."Document Type"::Order);
                 PurchLine.SetRange("Document No.", orderNo);
                 PurchLine.SetRange(Type, PurchLine.Type::Item);
                 PurchLine.SetRange("No.", itm);
+                if applyVariant then
+                    PurchLine.SetRange("Variant Code", variantCode);
                 PurchLine.SetFilter("Qty. Rcd. Not Invoiced", '>0');
                 PurchLine.SetRange("Qty. to Invoice", 0);
                 if PurchLine.FindFirst() then begin
