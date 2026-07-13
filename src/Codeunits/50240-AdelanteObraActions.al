@@ -42,6 +42,11 @@ codeunit 50240 "Adelante Obra Actions"
         Works.Validate("Bill-to Customer No.", BillToCustomerNo());
         Works.Insert(true);
 
+        // El Centro de Costo (CC) es propio de cada obra: su valor = N° de obra, y NO existe
+        // todavía como valor de dimensión → hay que crearlo antes de asignarlo. El Área de
+        // Costo (AC) se elige de valores ya existentes (ej. PRO VIVIENDA), no se crea.
+        EnsureDimensionValue(DimCentroCosto(), centroCosto, description);
+
         // Dimensiones por código (tabla aparte; no dependen del número de dimensión de atajo).
         // areaCosteo -> dimensión AC ; centroCosto -> dimensión CC.
         SetObraDimension(obraNo, DimAreaCosto(), areaCosteo);
@@ -92,6 +97,22 @@ codeunit 50240 "Adelante Obra Actions"
         JobMgmt.UpsertJobTask(Works, versionCode);
 
         exit('OK');
+    end;
+
+    /// <summary>Crea el valor de dimensión (Dimension Value) si aún no existe.</summary>
+    local procedure EnsureDimensionValue(dimCode: Code[20]; valueCode: Code[20]; name: Text[100])
+    var
+        DimValue: Record "Dimension Value";
+    begin
+        if (dimCode = '') or (valueCode = '') then
+            exit;
+        if DimValue.Get(dimCode, valueCode) then
+            exit;
+        DimValue.Init();
+        DimValue.Validate("Dimension Code", dimCode);
+        DimValue.Validate(Code, valueCode);
+        DimValue.Validate(Name, CopyStr(name, 1, MaxStrLen(DimValue.Name)));
+        DimValue.Insert(true);
     end;
 
     /// <summary>Crea o actualiza una dimensión por defecto de la obra por código de dimensión.</summary>
