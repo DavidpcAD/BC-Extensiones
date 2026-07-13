@@ -40,6 +40,7 @@ permissionset 50100 "Adelante API RIMD"
         tabledata "GJW Material Operation Step" = RIMD,
         tabledata "Default Dimension" = RIMD,
         tabledata "Dimension Value" = RIMD,
+        tabledata "General Ledger Setup" = R,
 
 
 

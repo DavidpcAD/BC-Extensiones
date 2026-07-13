@@ -52,10 +52,9 @@ codeunit 50240 "Adelante Obra Actions"
         // Almacén (Location) propio de la obra: su código = N° de obra.
         EnsureLocation(obraNo, description);
 
-        // Dimensiones por código (tabla aparte; no dependen del número de dimensión de atajo).
-        // areaCosteo -> dimensión AC ; centroCosto -> dimensión CC.
-        SetObraDimension(obraNo, DimAreaCosto(), areaCosteo);
-        SetObraDimension(obraNo, DimCentroCosto(), centroCosto);
+        // Asignar dimensiones. areaCosteo -> AC ; centroCosto -> CC.
+        AsignarDimension(obraNo, DimAreaCosto(), areaCosteo);
+        AsignarDimension(obraNo, DimCentroCosto(), centroCosto);
 
         exit('OK');
     end;
@@ -102,6 +101,47 @@ codeunit 50240 "Adelante Obra Actions"
         JobMgmt.UpsertJobTask(Works, versionCode);
 
         exit('OK');
+    end;
+
+    /// <summary>
+    /// Asigna un valor de dimensión a la obra. Si la dimensión es de atajo/global (aparece
+    /// como campo en la ficha, ej. "Área de Costo"), se setea con ValidateShortcutDimCode en
+    /// el registro (así se ve en la ficha y se crea la Default Dimension). Si no lo es, se
+    /// inserta directamente la Default Dimension.
+    /// </summary>
+    local procedure AsignarDimension(obraNo: Code[20]; dimCode: Code[20]; dimValue: Code[20])
+    var
+        Works: Record "GomJob Works";
+        fieldNo: Integer;
+    begin
+        if (dimCode = '') or (dimValue = '') then
+            exit;
+        fieldNo := ShortcutFieldNo(dimCode);
+        if fieldNo > 0 then begin
+            Works.Get(obraNo); // fresco, para no chocar por concurrencia con el Insert previo
+            Works.ValidateShortcutDimCode(fieldNo, dimValue);
+            Works.Modify(true);
+        end else
+            SetObraDimension(obraNo, dimCode, dimValue);
+    end;
+
+    /// <summary>Devuelve el N° de dimensión de atajo (1-8) de un código de dimensión, o 0 si no es de atajo.</summary>
+    local procedure ShortcutFieldNo(dimCode: Code[20]): Integer
+    var
+        GLSetup: Record "General Ledger Setup";
+    begin
+        if dimCode = '' then
+            exit(0);
+        GLSetup.Get();
+        if dimCode = GLSetup."Global Dimension 1 Code" then exit(1);
+        if dimCode = GLSetup."Global Dimension 2 Code" then exit(2);
+        if dimCode = GLSetup."Shortcut Dimension 3 Code" then exit(3);
+        if dimCode = GLSetup."Shortcut Dimension 4 Code" then exit(4);
+        if dimCode = GLSetup."Shortcut Dimension 5 Code" then exit(5);
+        if dimCode = GLSetup."Shortcut Dimension 6 Code" then exit(6);
+        if dimCode = GLSetup."Shortcut Dimension 7 Code" then exit(7);
+        if dimCode = GLSetup."Shortcut Dimension 8 Code" then exit(8);
+        exit(0);
     end;
 
     /// <summary>Crea el almacén (Location) con código = N° de obra si aún no existe.</summary>
