@@ -38,6 +38,12 @@ codeunit 50230 "Adelante PO Actions"
     begin
         GetOrder(PurchHeader, orderNo);
 
+        // 0) Asignar los cargos de producto (flete) mientras el pedido está Abierto.
+        //    Best-effort: si algo falla no debe bloquear el "Aprobar y lanzar" (el
+        //    registro volverá a asignar de todos modos). Ver AsignarCargosProducto.
+        if PurchHeader.Status = PurchHeader.Status::Open then
+            if not TryAsignarCargosEnLanzamiento(PurchHeader) then;
+
         // 1) Enviar a aprobación si hay workflow activo y el documento está Abierto.
         if PurchHeader.Status = PurchHeader.Status::Open then
             if ApprovalsMgmt.IsPurchaseApprovalsWorkflowEnabled(PurchHeader) then
@@ -156,6 +162,10 @@ codeunit 50230 "Adelante PO Actions"
             end;
         end;
 
+        // Distribuir los cargos de producto (flete) por importe entre las líneas de
+        // artículo que se reciben/facturan en esta factura, antes de registrar.
+        AsignarCargosProducto(PurchHeader, true);
+
         PurchPost.Run(PurchHeader);
         postedNo := PurchHeader."Last Posting No.";
         if postedNo = '' then
@@ -242,6 +252,11 @@ codeunit 50230 "Adelante PO Actions"
             end;
         end;
 
+        // Distribuir los cargos de producto (flete) por importe entre las líneas de
+        // artículo que se reciben en esta recepción. El cargo se recibe (no se factura);
+        // la factura posterior (PostInvoiceOfReceived) conservará esta asignación.
+        AsignarCargosProducto(PurchHeader, true);
+
         PurchPost.Run(PurchHeader);
         postedNo := PurchHeader."Last Receiving No.";
         exit(postedNo);
@@ -327,6 +342,10 @@ codeunit 50230 "Adelante PO Actions"
             end;
         end;
 
+        // Facturar el cargo de producto ya recibido: conserva la asignación creada en la
+        // recepción y solo ajusta la cantidad a facturar (o la crea si no existiera).
+        AsignarCargosProducto(PurchHeader, true);
+
         PurchPost.Run(PurchHeader);
         postedNo := PurchHeader."Last Posting No.";
         if postedNo = '' then
@@ -349,5 +368,187 @@ codeunit 50230 "Adelante PO Actions"
     begin
         GetOrder(PurchHeader, orderNo);
         exit(Format(PurchHeader.Status));
+    end;
+
+    // ════════════════════════════════════════════════════════════════════════════════
+    //  Cargos de producto (Item Charges) — auto-asignación del flete
+    //  ─────────────────────────────────────────────────────────────────────────────
+    //  El flete llega como una línea Type = "Charge (Item)" que crea la app al aprobar.
+    //  Un cargo con cantidad a recibir/facturar SIN asignar bloquea el registro con
+    //  "Debe asignar el cargo de producto ...". Estas rutinas replican la acción estándar
+    //  "Sugerir asignación de cargo → Por importe" (codeunit 5805 "Item Charge Assgnt.
+    //  (Purch.)"): reparten el cargo, ponderado por el importe de línea, entre las líneas
+    //  de artículo que se reciben/facturan en el mismo registro.
+    //
+    //  Política: el cargo se tramita al 100% en el registro que lo asigna (recibe todo su
+    //  pendiente), y se distribuye SOLO entre los artículos en proceso en ese registro:
+    //    - PostInvoice  (recibir+facturar): reparte entre las líneas que se reciben ahora.
+    //    - PostReceipt  (solo recibir):     recibe el cargo y lo reparte entre lo recibido;
+    //                                       la factura posterior conserva la asignación.
+    //    - PostInvoiceOfReceived (solo facturar): conserva la asignación de la recepción.
+    //    - ReleaseOrder (lanzar):           best-effort, reparte entre todas las líneas.
+    // ════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Asigna todas las líneas de cargo (Charge (Item)) del pedido.
+    /// EnRegistro=true: ajusta las cantidades a recibir/facturar del cargo según el modo del
+    /// encabezado (Receive/Invoice) y distribuye por importe entre las líneas de artículo en
+    /// proceso en este registro. EnRegistro=false (lanzamiento): distribuye entre todas las
+    /// líneas de artículo del documento, sin tocar cantidades y sin sobrescribir asignaciones
+    /// ya existentes.
+    /// </summary>
+    local procedure AsignarCargosProducto(var PurchHeader: Record "Purchase Header"; EnRegistro: Boolean)
+    var
+        ChargeLine: Record "Purchase Line";
+        LineNos: List of [Integer];
+        LineNo: Integer;
+    begin
+        ChargeLine.SetRange("Document Type", PurchHeader."Document Type");
+        ChargeLine.SetRange("Document No.", PurchHeader."No.");
+        ChargeLine.SetRange(Type, ChargeLine.Type::"Charge (Item)");
+        ChargeLine.SetFilter(Quantity, '<>0');
+        if ChargeLine.FindSet() then
+            repeat
+                LineNos.Add(ChargeLine."Line No.");
+            until ChargeLine.Next() = 0;
+
+        // Se recorre por número de línea (no sobre el propio FindSet) porque cada iteración
+        // modifica la línea de cargo y la tabla de asignación.
+        foreach LineNo in LineNos do
+            ProcesarCargo(PurchHeader, LineNo, EnRegistro);
+    end;
+
+    [TryFunction]
+    local procedure TryAsignarCargosEnLanzamiento(var PurchHeader: Record "Purchase Header")
+    begin
+        AsignarCargosProducto(PurchHeader, false);
+    end;
+
+    local procedure ProcesarCargo(var PurchHeader: Record "Purchase Header"; ChargeLineNo: Integer; EnRegistro: Boolean)
+    var
+        ChargeLine: Record "Purchase Line";
+        QtyPend: Decimal;
+    begin
+        ChargeLine.Get(PurchHeader."Document Type", PurchHeader."No.", ChargeLineNo);
+        if ChargeLine.Type <> ChargeLine.Type::"Charge (Item)" then
+            exit;
+        if ChargeLine.Quantity = 0 then
+            exit;
+
+        if not EnRegistro then begin
+            // Lanzamiento: asignar entre todas las líneas de artículo si aún no está asignado
+            // (no se sobrescribe una asignación manual previa).
+            if not AsignacionExiste(ChargeLine) then
+                ConstruirAsignacion(ChargeLine, false, false);
+            exit;
+        end;
+
+        // ── En registro: fijar la cantidad del cargo según el modo del encabezado. ──
+        if PurchHeader.Receive then begin
+            QtyPend := ChargeLine."Outstanding Quantity";
+            ChargeLine.Validate("Qty. to Receive", QtyPend);
+            if PurchHeader.Invoice then
+                ChargeLine.Validate("Qty. to Invoice", QtyPend)
+            else
+                ChargeLine.Validate("Qty. to Invoice", 0);
+        end else begin
+            ChargeLine.Validate("Qty. to Receive", 0);
+            if PurchHeader.Invoice then
+                ChargeLine.Validate("Qty. to Invoice", ChargeLine."Qty. Rcd. Not Invoiced")
+            else
+                ChargeLine.Validate("Qty. to Invoice", 0);
+        end;
+        ChargeLine.Modify(true);
+
+        if PurchHeader.Receive then
+            // Recibiendo (con o sin factura): (re)distribuir sobre las líneas que se reciben ahora.
+            ConstruirAsignacion(ChargeLine, true, true)
+        else
+            // Solo factura de lo ya recibido: conservar la asignación creada en la recepción
+            // (Validate("Qty. to Invoice") ya rebalanceó lo "a tramitar"). Crearla si faltara.
+            if not AsignacionExiste(ChargeLine) then
+                ConstruirAsignacion(ChargeLine, true, false);
+    end;
+
+    /// <summary>
+    /// Construye la asignación de una línea de cargo distribuyéndola POR IMPORTE.
+    /// SoloEnProceso=true poda las líneas destino a las que se reciben (PorRecepcion=true)
+    /// o se facturan (PorRecepcion=false) en este registro; false asigna a todas las líneas
+    /// de artículo del documento.
+    /// </summary>
+    local procedure ConstruirAsignacion(var ChargeLine: Record "Purchase Line"; SoloEnProceso: Boolean; PorRecepcion: Boolean)
+    var
+        ItemChargeAssgnt: Record "Item Charge Assignment (Purch)";
+        TargetLine: Record "Purchase Line";
+        ItemChargeMgt: Codeunit "Item Charge Assgnt. (Purch.)";
+    begin
+        // 1) Limpiar la asignación previa de esta línea de cargo.
+        BorrarAsignacion(ChargeLine);
+
+        // 2) Crear candidatos para todas las líneas de artículo del documento (Applies-to = Order).
+        ItemChargeAssgnt.Init();
+        ItemChargeAssgnt."Document Type" := ChargeLine."Document Type";
+        ItemChargeAssgnt."Document No." := ChargeLine."Document No.";
+        ItemChargeAssgnt."Document Line No." := ChargeLine."Line No.";
+        ItemChargeAssgnt."Item Charge No." := ChargeLine."No.";
+        ItemChargeAssgnt."Unit Cost" := ChargeLine."Direct Unit Cost";
+        ItemChargeMgt.CreateDocChargeAssgnt(ItemChargeAssgnt, '');
+
+        // 3) Podar los candidatos que no están en proceso en este registro.
+        if SoloEnProceso then begin
+            ItemChargeAssgnt.Reset();
+            ItemChargeAssgnt.SetRange("Document Type", ChargeLine."Document Type");
+            ItemChargeAssgnt.SetRange("Document No.", ChargeLine."Document No.");
+            ItemChargeAssgnt.SetRange("Document Line No.", ChargeLine."Line No.");
+            ItemChargeAssgnt.SetRange("Applies-to Doc. Type", ItemChargeAssgnt."Applies-to Doc. Type"::Order);
+            if ItemChargeAssgnt.FindSet() then
+                repeat
+                    if TargetLine.Get(ChargeLine."Document Type", ItemChargeAssgnt."Applies-to Doc. No.", ItemChargeAssgnt."Applies-to Doc. Line No.") then begin
+                        if not LineaEnProceso(TargetLine, PorRecepcion) then
+                            ItemChargeAssgnt.Delete();
+                    end else
+                        ItemChargeAssgnt.Delete();
+                until ItemChargeAssgnt.Next() = 0;
+        end;
+
+        // 4) Debe quedar al menos una línea destino.
+        if not AsignacionExiste(ChargeLine) then
+            Error(
+              'No hay líneas de artículo en proceso a las que asignar el cargo de producto "%1" del pedido %2. ' +
+              'Recibí o factura al menos un artículo junto con el cargo.',
+              ChargeLine."No.", ChargeLine."Document No.");
+
+        // 5) Distribuir por importe (equivale a "Sugerir asignación de cargo → Por importe").
+        ItemChargeMgt.AssignItemCharges(
+          ChargeLine, ChargeLine.Quantity, ChargeLine."Line Amount", ItemChargeMgt.AssignByAmountMenuText());
+    end;
+
+    local procedure LineaEnProceso(TargetLine: Record "Purchase Line"; PorRecepcion: Boolean): Boolean
+    begin
+        if TargetLine.Type <> TargetLine.Type::Item then
+            exit(false);
+        if PorRecepcion then
+            exit(TargetLine."Qty. to Receive" > 0);
+        exit(TargetLine."Qty. to Invoice" > 0);
+    end;
+
+    local procedure AsignacionExiste(var ChargeLine: Record "Purchase Line"): Boolean
+    var
+        ItemChargeAssgnt: Record "Item Charge Assignment (Purch)";
+    begin
+        ItemChargeAssgnt.SetRange("Document Type", ChargeLine."Document Type");
+        ItemChargeAssgnt.SetRange("Document No.", ChargeLine."Document No.");
+        ItemChargeAssgnt.SetRange("Document Line No.", ChargeLine."Line No.");
+        exit(not ItemChargeAssgnt.IsEmpty());
+    end;
+
+    local procedure BorrarAsignacion(var ChargeLine: Record "Purchase Line")
+    var
+        ItemChargeAssgnt: Record "Item Charge Assignment (Purch)";
+    begin
+        ItemChargeAssgnt.SetRange("Document Type", ChargeLine."Document Type");
+        ItemChargeAssgnt.SetRange("Document No.", ChargeLine."Document No.");
+        ItemChargeAssgnt.SetRange("Document Line No.", ChargeLine."Line No.");
+        ItemChargeAssgnt.DeleteAll();
     end;
 }
