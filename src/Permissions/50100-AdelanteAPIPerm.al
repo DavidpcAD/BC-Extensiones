@@ -38,6 +38,7 @@ permissionset 50100 "Adelante API RIMD"
         tabledata "GJW Bulk Buffer" = RIMD,
         tabledata "GJW Material Operation" = RIMD,
         tabledata "GJW Material Operation Step" = RIMD,
+        tabledata "Default Dimension" = RIMD,
 
 
 
@@ -95,6 +96,8 @@ permissionset 50100 "Adelante API RIMD"
         codeunit "Item Journal Line AutoNo" = X,
         codeunit "GJW Material Op Orchestrator" = X,
         codeunit "GJW Material Op Bulk Proc" = X,
-        codeunit "GJW Item Journal Post Handler" = X; // ⭐ Automatización Warehouse Quantity
+        codeunit "GJW Item Journal Post Handler" = X, // ⭐ Automatización Warehouse Quantity
+        codeunit "Adelante Obra Actions" = X,
+        codeunit "GomJob Job Management" = X;
 
 }

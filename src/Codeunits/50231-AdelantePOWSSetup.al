@@ -9,10 +9,16 @@ codeunit 50231 "Adelante PO WS Setup"
     Access = Internal;
 
     procedure Register()
+    begin
+        RegisterService(Codeunit::"Adelante PO Actions", 'AdelantePO');
+        RegisterService(Codeunit::"Adelante Obra Actions", 'AdelanteObra');
+    end;
+
+    local procedure RegisterService(objectId: Integer; serviceName: Text[240])
     var
         TenantWebService: Record "Tenant Web Service";
     begin
-        if TenantWebService.Get(TenantWebService."Object Type"::Codeunit, 'AdelantePO') then begin
+        if TenantWebService.Get(TenantWebService."Object Type"::Codeunit, serviceName) then begin
             if not TenantWebService.Published then begin
                 TenantWebService.Published := true;
                 TenantWebService.Modify(true);
@@ -21,8 +27,8 @@ codeunit 50231 "Adelante PO WS Setup"
         end;
         TenantWebService.Init();
         TenantWebService."Object Type" := TenantWebService."Object Type"::Codeunit;
-        TenantWebService."Object ID" := Codeunit::"Adelante PO Actions";
-        TenantWebService."Service Name" := 'AdelantePO';
+        TenantWebService."Object ID" := objectId;
+        TenantWebService."Service Name" := CopyStr(serviceName, 1, MaxStrLen(TenantWebService."Service Name"));
         TenantWebService.Published := true;
         TenantWebService.Insert(true);
     end;
