@@ -54,7 +54,22 @@ codeunit 50240 "Adelante Obra Actions"
         acField := ShortcutFieldNo(DimAreaCosto());
         if acField > 0 then begin
             Works.Get(obraNo); // fresco
-            Works.ValidateShortcutDimCode(acField, areaCosteo);
+            Works.ValidateShortcutDimCode(acField, areaCosteo); // persiste la Default Dimension del AC
+
+            // Persistir el campo denormalizado "Global Dimension 1/2 Code" (la columna
+            // "Área de Costo" de las listas/reportes). ValidateShortcutDimCode lo deja solo
+            // en memoria. Re-leemos FRESCO (ya con lo que escribió el subscriber de GomJob) y
+            // lo seteamos por asignación directa (sin re-disparar el guardado de dimensión que
+            // causaba el race), y recién ahí Modify. El Get va DESPUÉS del ValidateShortcutDimCode
+            // (antes chocaba porque la variable quedaba desactualizada por el guardado interno).
+            if acField in [1, 2] then begin
+                Works.Get(obraNo);
+                if acField = 1 then
+                    Works."Global Dimension 1 Code" := areaCosteo
+                else
+                    Works."Global Dimension 2 Code" := areaCosteo;
+                Works.Modify(true);
+            end;
         end else
             SetObraDimension(obraNo, DimAreaCosto(), areaCosteo);
 
