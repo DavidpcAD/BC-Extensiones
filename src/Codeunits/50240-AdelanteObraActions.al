@@ -25,6 +25,7 @@ codeunit 50240 "Adelante Obra Actions"
     procedure CreateWork(obraNo: Code[20]; description: Text[100]; description2: Text[50]; areaCosteo: Code[20]; centroCosto: Code[20]): Text
     var
         Works: Record "GomJob Works";
+        acField: Integer;
     begin
         if obraNo = '' then
             Error('Falta el N.º de obra.');
@@ -33,10 +34,8 @@ codeunit 50240 "Adelante Obra Actions"
         if Works.Get(obraNo) then
             Error('La obra %1 ya existe en BC.', obraNo);
 
-        // 1) Insertar el Work primero. NO seteamos dimensiones antes del Insert (hacerlo
-        //    dispara la escritura de Default Dimension sobre un Work que aún no existe →
-        //    "No. ... cannot be found in Work"). Tampoco hacemos Modify después del Insert
-        //    (eso choca con la lógica de GomJob por concurrencia → "record not up-to-date").
+        // 1) Insertar el Work primero (sin tocar dimensiones antes → si no, se intenta escribir
+        //    Default Dimension sobre un Work inexistente: "No. ... cannot be found in Work").
         Works.Init();
         Works."No." := obraNo;
         Works.Validate(Description, description);
@@ -48,9 +47,18 @@ codeunit 50240 "Adelante Obra Actions"
         EnsureDimensionValue(DimCentroCosto(), centroCosto, description);
         EnsureLocation(obraNo, description);
 
-        // 3) Default Dimensions (tabla aparte, no requiere Modify del Work). Para el AC
-        //    (dimensión global) BC actualiza el campo "Área de Costo" de la ficha al insertarla.
-        SetObraDimension(obraNo, DimAreaCosto(), areaCosteo);
+        // 3) AC = dimensión de atajo/global (campo "Área de Costo" de la ficha). Se asigna con
+        //    ValidateShortcutDimCode, que YA persiste la Default Dimension y el campo global por
+        //    sí mismo. NO hacer Modify después: ese Modify (sobre la variable ya desactualizada
+        //    por el guardado interno) es el que chocaba por concurrencia optimista.
+        acField := ShortcutFieldNo(DimAreaCosto());
+        if acField > 0 then begin
+            Works.Get(obraNo); // fresco
+            Works.ValidateShortcutDimCode(acField, areaCosteo);
+        end else
+            SetObraDimension(obraNo, DimAreaCosto(), areaCosteo);
+
+        // 4) CC = dimensión normal → Default Dimension (tabla aparte, no toca el Work).
         SetObraDimension(obraNo, DimCentroCosto(), centroCosto);
 
         exit('OK');
@@ -98,6 +106,25 @@ codeunit 50240 "Adelante Obra Actions"
         JobMgmt.UpsertJobTask(Works, versionCode);
 
         exit('OK');
+    end;
+
+    /// <summary>Devuelve el N° de dimensión de atajo (1-8) de un código de dimensión, o 0 si no es de atajo.</summary>
+    local procedure ShortcutFieldNo(dimCode: Code[20]): Integer
+    var
+        GLSetup: Record "General Ledger Setup";
+    begin
+        if dimCode = '' then
+            exit(0);
+        GLSetup.Get();
+        if dimCode = GLSetup."Global Dimension 1 Code" then exit(1);
+        if dimCode = GLSetup."Global Dimension 2 Code" then exit(2);
+        if dimCode = GLSetup."Shortcut Dimension 3 Code" then exit(3);
+        if dimCode = GLSetup."Shortcut Dimension 4 Code" then exit(4);
+        if dimCode = GLSetup."Shortcut Dimension 5 Code" then exit(5);
+        if dimCode = GLSetup."Shortcut Dimension 6 Code" then exit(6);
+        if dimCode = GLSetup."Shortcut Dimension 7 Code" then exit(7);
+        if dimCode = GLSetup."Shortcut Dimension 8 Code" then exit(8);
+        exit(0);
     end;
 
     /// <summary>Crea el almacén (Location) con código = N° de obra si aún no existe.</summary>
