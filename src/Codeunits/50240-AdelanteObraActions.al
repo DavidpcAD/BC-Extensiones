@@ -22,7 +22,7 @@ codeunit 50240 "Adelante Obra Actions"
     /// Crea una Obra (GomJob Works) con su cliente de facturación fijo 'AD' y asigna las
     /// dimensiones por defecto Área de Costo (AC) y Centro de Costo (CC). Devuelve 'OK'.
     /// </summary>
-    procedure CreateWork(obraNo: Code[20]; description: Text[100]; description2: Text[50]; areaCosto: Code[20]; centroCosto: Code[20]): Text
+    procedure CreateWork(obraNo: Code[20]; description: Text[100]; description2: Text[50]; areaCosteo: Code[20]; centroCosto: Code[20]): Text
     var
         Works: Record "GomJob Works";
     begin
@@ -41,10 +41,35 @@ codeunit 50240 "Adelante Obra Actions"
         Works.Modify(true);
 
         // Dimensiones por código (no dependen del número de dimensión de atajo).
-        SetObraDimension(obraNo, DimAreaCosto(), areaCosto);
+        // areaCosteo -> dimensión AC ; centroCosto -> dimensión CC.
+        SetObraDimension(obraNo, DimAreaCosto(), areaCosteo);
         SetObraDimension(obraNo, DimCentroCosto(), centroCosto);
 
         exit('OK');
+    end;
+
+    /// <summary>
+    /// Devuelve los valores de una dimensión (ej. 'AC' o 'CC') como JSON:
+    /// [{"code":"PRO VIVIENDA","name":"Vivienda"}, ...]. Para poblar los combobox de la app.
+    /// </summary>
+    procedure GetDimensionValues(dimensionCode: Code[20]): Text
+    var
+        DimValue: Record "Dimension Value";
+        JArr: JsonArray;
+        JObj: JsonObject;
+        result: Text;
+    begin
+        DimValue.SetRange("Dimension Code", dimensionCode);
+        DimValue.SetRange(Blocked, false);
+        if DimValue.FindSet() then
+            repeat
+                Clear(JObj);
+                JObj.Add('code', DimValue.Code);
+                JObj.Add('name', DimValue.Name);
+                JArr.Add(JObj);
+            until DimValue.Next() = 0;
+        JArr.WriteTo(result);
+        exit(result);
     end;
 
     /// <summary>
