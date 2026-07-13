@@ -28,6 +28,8 @@ codeunit 50240 "Adelante Obra Actions"
     begin
         if obraNo = '' then
             Error('Falta el N.º de obra.');
+        if areaCosteo = '' then
+            Error('Falta el Área de Costo. El parámetro esperado es exactamente "areaCosteo" (valor de dimensión AC, ej. "PRO VIVIENDA").');
         if Works.Get(obraNo) then
             Error('La obra %1 ya existe en BC.', obraNo);
 
