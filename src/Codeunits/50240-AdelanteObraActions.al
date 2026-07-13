@@ -31,16 +31,18 @@ codeunit 50240 "Adelante Obra Actions"
         if Works.Get(obraNo) then
             Error('La obra %1 ya existe en BC.', obraNo);
 
+        // Setear TODO antes del Insert. El Insert(true) dispara lógica interna de GomJob
+        // que modifica el registro; si después hiciéramos Modify(true) sobre esta variable
+        // (ya desactualizada) BC lo rechaza por concurrencia optimista ("...record cannot
+        // be saved because some information ... is not up-to-date"). Por eso: un solo Insert.
         Works.Init();
         Works."No." := obraNo;
-        Works.Insert(true);
-
         Works.Validate(Description, description);
         Works.Validate("Description 2", description2);
         Works.Validate("Bill-to Customer No.", BillToCustomerNo());
-        Works.Modify(true);
+        Works.Insert(true);
 
-        // Dimensiones por código (no dependen del número de dimensión de atajo).
+        // Dimensiones por código (tabla aparte; no dependen del número de dimensión de atajo).
         // areaCosteo -> dimensión AC ; centroCosto -> dimensión CC.
         SetObraDimension(obraNo, DimAreaCosto(), areaCosteo);
         SetObraDimension(obraNo, DimCentroCosto(), centroCosto);
