@@ -47,6 +47,9 @@ codeunit 50240 "Adelante Obra Actions"
         // Costo (AC) se elige de valores ya existentes (ej. PRO VIVIENDA), no se crea.
         EnsureDimensionValue(DimCentroCosto(), centroCosto, description);
 
+        // Almacén (Location) propio de la obra: su código = N° de obra.
+        EnsureLocation(obraNo, description);
+
         // Dimensiones por código (tabla aparte; no dependen del número de dimensión de atajo).
         // areaCosteo -> dimensión AC ; centroCosto -> dimensión CC.
         SetObraDimension(obraNo, DimAreaCosto(), areaCosteo);
@@ -97,6 +100,23 @@ codeunit 50240 "Adelante Obra Actions"
         JobMgmt.UpsertJobTask(Works, versionCode);
 
         exit('OK');
+    end;
+
+    /// <summary>Crea el almacén (Location) con código = N° de obra si aún no existe.</summary>
+    local procedure EnsureLocation(obraNo: Code[20]; name: Text[100])
+    var
+        Location: Record Location;
+        locCode: Code[10];
+    begin
+        locCode := CopyStr(obraNo, 1, MaxStrLen(locCode));
+        if locCode = '' then
+            exit;
+        if Location.Get(locCode) then
+            exit;
+        Location.Init();
+        Location.Validate(Code, locCode);
+        Location.Validate(Name, CopyStr(name, 1, MaxStrLen(Location.Name)));
+        Location.Insert(true);
     end;
 
     /// <summary>Crea el valor de dimensión (Dimension Value) si aún no existe.</summary>

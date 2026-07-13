@@ -24,7 +24,7 @@ permissionset 50100 "Adelante API RIMD"
         tabledata "GJW Item Availability Buffer" = RIMD,
         tabledata "Job Journal Line" = RIMD,
         tabledata Item = R,
-        tabledata Location = R,
+        tabledata Location = RIMD,
         tabledata "Job Task" = RIMD,
         tabledata "Job" = RIMD,
         tabledata "Job Journal Batch" = RIMD,
