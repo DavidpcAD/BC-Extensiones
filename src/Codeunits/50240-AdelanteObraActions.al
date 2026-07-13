@@ -25,7 +25,6 @@ codeunit 50240 "Adelante Obra Actions"
     procedure CreateWork(obraNo: Code[20]; description: Text[100]; description2: Text[50]; areaCosteo: Code[20]; centroCosto: Code[20]): Text
     var
         Works: Record "GomJob Works";
-        acFieldNo: Integer;
     begin
         if obraNo = '' then
             Error('Falta el N.º de obra.');
@@ -34,38 +33,24 @@ codeunit 50240 "Adelante Obra Actions"
         if Works.Get(obraNo) then
             Error('La obra %1 ya existe en BC.', obraNo);
 
-        // El CC es propio de cada obra (valor = N° de obra) y no existe aún como valor de
-        // dimensión: hay que crearlo. Es independiente del registro Work.
-        EnsureDimensionValue(DimCentroCosto(), centroCosto, description);
-
-        // CLAVE (evitar la concurrencia optimista de GomJob): NO hacer ningún Modify sobre el
-        // Work después del Insert. El Insert(true) dispara lógica interna de GomJob que cambia
-        // la versión del registro; un Modify posterior sobre la variable vieja lo rechaza
-        // ("...record ... not up-to-date"). Por eso el AC (dimensión de atajo/global, el campo
-        // "Área de Costo" de la ficha) se setea en el campo del registro ANTES del Insert.
+        // 1) Insertar el Work primero. NO seteamos dimensiones antes del Insert (hacerlo
+        //    dispara la escritura de Default Dimension sobre un Work que aún no existe →
+        //    "No. ... cannot be found in Work"). Tampoco hacemos Modify después del Insert
+        //    (eso choca con la lógica de GomJob por concurrencia → "record not up-to-date").
         Works.Init();
         Works."No." := obraNo;
         Works.Validate(Description, description);
         Works.Validate("Description 2", description2);
         Works.Validate("Bill-to Customer No.", BillToCustomerNo());
-        acFieldNo := ShortcutFieldNo(DimAreaCosto());
-        case acFieldNo of
-            1:
-                Works.Validate("Global Dimension 1 Code", areaCosteo);
-            2:
-                Works.Validate("Global Dimension 2 Code", areaCosteo);
-        end;
         Works.Insert(true);
 
-        // Almacén (Location) propio de la obra: su código = N° de obra.
+        // 2) Con el Work ya existente: valor de dimensión del CC (propio de la obra) y almacén.
+        EnsureDimensionValue(DimCentroCosto(), centroCosto, description);
         EnsureLocation(obraNo, description);
 
-        // Si el AC no fuera dimensión global 1/2 (config inesperada), asignarlo por Default
-        // Dimension (tabla aparte, no toca el registro Work → sin concurrencia).
-        if (acFieldNo <> 1) and (acFieldNo <> 2) then
-            SetObraDimension(obraNo, DimAreaCosto(), areaCosteo);
-
-        // CC: dimensión normal → Default Dimension (tabla aparte, no toca el Work).
+        // 3) Default Dimensions (tabla aparte, no requiere Modify del Work). Para el AC
+        //    (dimensión global) BC actualiza el campo "Área de Costo" de la ficha al insertarla.
+        SetObraDimension(obraNo, DimAreaCosto(), areaCosteo);
         SetObraDimension(obraNo, DimCentroCosto(), centroCosto);
 
         exit('OK');
@@ -113,25 +98,6 @@ codeunit 50240 "Adelante Obra Actions"
         JobMgmt.UpsertJobTask(Works, versionCode);
 
         exit('OK');
-    end;
-
-    /// <summary>Devuelve el N° de dimensión de atajo (1-8) de un código de dimensión, o 0 si no es de atajo.</summary>
-    local procedure ShortcutFieldNo(dimCode: Code[20]): Integer
-    var
-        GLSetup: Record "General Ledger Setup";
-    begin
-        if dimCode = '' then
-            exit(0);
-        GLSetup.Get();
-        if dimCode = GLSetup."Global Dimension 1 Code" then exit(1);
-        if dimCode = GLSetup."Global Dimension 2 Code" then exit(2);
-        if dimCode = GLSetup."Shortcut Dimension 3 Code" then exit(3);
-        if dimCode = GLSetup."Shortcut Dimension 4 Code" then exit(4);
-        if dimCode = GLSetup."Shortcut Dimension 5 Code" then exit(5);
-        if dimCode = GLSetup."Shortcut Dimension 6 Code" then exit(6);
-        if dimCode = GLSetup."Shortcut Dimension 7 Code" then exit(7);
-        if dimCode = GLSetup."Shortcut Dimension 8 Code" then exit(8);
-        exit(0);
     end;
 
     /// <summary>Crea el almacén (Location) con código = N° de obra si aún no existe.</summary>
