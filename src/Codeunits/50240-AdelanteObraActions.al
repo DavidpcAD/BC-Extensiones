@@ -25,6 +25,7 @@ codeunit 50240 "Adelante Obra Actions"
     procedure CreateWork(obraNo: Code[20]; description: Text[100]; description2: Text[50]; areaCosteo: Code[20]; centroCosto: Code[20]): Text
     var
         Works: Record "GomJob Works";
+        acFieldNo: Integer;
     begin
         if obraNo = '' then
             Error('Falta el N.º de obra.');
@@ -33,28 +34,39 @@ codeunit 50240 "Adelante Obra Actions"
         if Works.Get(obraNo) then
             Error('La obra %1 ya existe en BC.', obraNo);
 
-        // Setear TODO antes del Insert. El Insert(true) dispara lógica interna de GomJob
-        // que modifica el registro; si después hiciéramos Modify(true) sobre esta variable
-        // (ya desactualizada) BC lo rechaza por concurrencia optimista ("...record cannot
-        // be saved because some information ... is not up-to-date"). Por eso: un solo Insert.
+        // El CC es propio de cada obra (valor = N° de obra) y no existe aún como valor de
+        // dimensión: hay que crearlo. Es independiente del registro Work.
+        EnsureDimensionValue(DimCentroCosto(), centroCosto, description);
+
+        // CLAVE (evitar la concurrencia optimista de GomJob): NO hacer ningún Modify sobre el
+        // Work después del Insert. El Insert(true) dispara lógica interna de GomJob que cambia
+        // la versión del registro; un Modify posterior sobre la variable vieja lo rechaza
+        // ("...record ... not up-to-date"). Por eso el AC (dimensión de atajo/global, el campo
+        // "Área de Costo" de la ficha) se setea en el campo del registro ANTES del Insert.
         Works.Init();
         Works."No." := obraNo;
         Works.Validate(Description, description);
         Works.Validate("Description 2", description2);
         Works.Validate("Bill-to Customer No.", BillToCustomerNo());
+        acFieldNo := ShortcutFieldNo(DimAreaCosto());
+        case acFieldNo of
+            1:
+                Works.Validate("Global Dimension 1 Code", areaCosteo);
+            2:
+                Works.Validate("Global Dimension 2 Code", areaCosteo);
+        end;
         Works.Insert(true);
-
-        // El Centro de Costo (CC) es propio de cada obra: su valor = N° de obra, y NO existe
-        // todavía como valor de dimensión → hay que crearlo antes de asignarlo. El Área de
-        // Costo (AC) se elige de valores ya existentes (ej. PRO VIVIENDA), no se crea.
-        EnsureDimensionValue(DimCentroCosto(), centroCosto, description);
 
         // Almacén (Location) propio de la obra: su código = N° de obra.
         EnsureLocation(obraNo, description);
 
-        // Asignar dimensiones. areaCosteo -> AC ; centroCosto -> CC.
-        AsignarDimension(obraNo, DimAreaCosto(), areaCosteo);
-        AsignarDimension(obraNo, DimCentroCosto(), centroCosto);
+        // Si el AC no fuera dimensión global 1/2 (config inesperada), asignarlo por Default
+        // Dimension (tabla aparte, no toca el registro Work → sin concurrencia).
+        if (acFieldNo <> 1) and (acFieldNo <> 2) then
+            SetObraDimension(obraNo, DimAreaCosto(), areaCosteo);
+
+        // CC: dimensión normal → Default Dimension (tabla aparte, no toca el Work).
+        SetObraDimension(obraNo, DimCentroCosto(), centroCosto);
 
         exit('OK');
     end;
@@ -101,28 +113,6 @@ codeunit 50240 "Adelante Obra Actions"
         JobMgmt.UpsertJobTask(Works, versionCode);
 
         exit('OK');
-    end;
-
-    /// <summary>
-    /// Asigna un valor de dimensión a la obra. Si la dimensión es de atajo/global (aparece
-    /// como campo en la ficha, ej. "Área de Costo"), se setea con ValidateShortcutDimCode en
-    /// el registro (así se ve en la ficha y se crea la Default Dimension). Si no lo es, se
-    /// inserta directamente la Default Dimension.
-    /// </summary>
-    local procedure AsignarDimension(obraNo: Code[20]; dimCode: Code[20]; dimValue: Code[20])
-    var
-        Works: Record "GomJob Works";
-        fieldNo: Integer;
-    begin
-        if (dimCode = '') or (dimValue = '') then
-            exit;
-        fieldNo := ShortcutFieldNo(dimCode);
-        if fieldNo > 0 then begin
-            Works.Get(obraNo); // fresco, para no chocar por concurrencia con el Insert previo
-            Works.ValidateShortcutDimCode(fieldNo, dimValue);
-            Works.Modify(true);
-        end else
-            SetObraDimension(obraNo, dimCode, dimValue);
     end;
 
     /// <summary>Devuelve el N° de dimensión de atajo (1-8) de un código de dimensión, o 0 si no es de atajo.</summary>
