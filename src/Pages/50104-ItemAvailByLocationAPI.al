@@ -3,8 +3,15 @@ namespace Adelante.Inventory;
 using Microsoft.Inventory.Ledger;
 using Microsoft.Inventory.Item;
 
+// ⚠️ DEPRECADA: su "neto" es INCORRECTO (solo suma movimientos Transfer + Open + Positive,
+// ignora compras/ventas/ajustes/consumos). NO USAR para stock real.
+// Reemplazo: api/adelante/inventory/v1.0/inventoryByLocation (page 50236), que da el neto
+// físico real (SUM de todos los movimientos) y filtra por itemNo y/o locationCode.
 page 50104 "Item Avail by Location API"
 {
+    ObsoleteState = Pending;
+    ObsoleteReason = 'Neto incorrecto. Usar inventoryByLocation (page 50236).';
+    ObsoleteTag = '2026-07-13';
     PageType = API;
     APIPublisher = 'adelante';
     APIGroup = 'inventory';

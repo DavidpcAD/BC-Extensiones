@@ -78,6 +78,7 @@ permissionset 50100 "Adelante API RIMD"
         page "Job Journal Template API" = X,
         page "Adelante Item API" = X,
         page "Adelante Item Variant API" = X,
+        page "Adelante Inventory by Location" = X,
         page "GJW Post Job Journal API" = X,        //        page "GJW Job Journal Line API" = X,
 
 

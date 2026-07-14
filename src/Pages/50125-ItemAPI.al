@@ -36,6 +36,13 @@ page 50125 "Adelante Item API"
                 field(Inventory; Rec.Inventory) { }
                 field(UnitPrice; Rec."Unit Price") { }
                 field(Blocked; Rec.Blocked) { }
+
+                // Planificación: para faltantes / sugerencia de reorden en el dashboard.
+                // Nota: "Minimum Inventory" no es campo estándar del Item; el mínimo lo
+                // representa Safety Stock Quantity. Se agrega Reorder Quantity como extra útil.
+                field(reorderPoint; Rec."Reorder Point") { Caption = 'Reorder Point'; }
+                field(safetyStockQuantity; Rec."Safety Stock Quantity") { Caption = 'Safety Stock Quantity'; }
+                field(reorderQuantity; Rec."Reorder Quantity") { Caption = 'Reorder Quantity'; }
             }
 
         }
