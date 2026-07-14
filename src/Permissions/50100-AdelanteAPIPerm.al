@@ -41,6 +41,8 @@ permissionset 50100 "Adelante API RIMD"
         tabledata "Default Dimension" = RIMD,
         tabledata "Dimension Value" = RIMD,
         tabledata "General Ledger Setup" = R,
+        tabledata "Inventory Posting Setup" = RIMD,
+        tabledata "G/L Account" = R,
 
 
 

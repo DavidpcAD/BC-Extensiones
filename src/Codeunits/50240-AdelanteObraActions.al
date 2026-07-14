@@ -22,7 +22,7 @@ codeunit 50240 "Adelante Obra Actions"
     /// Crea una Obra (GomJob Works) con su cliente de facturación fijo 'AD' y asigna las
     /// dimensiones por defecto Área de Costo (AC) y Centro de Costo (CC). Devuelve 'OK'.
     /// </summary>
-    procedure CreateWork(obraNo: Code[20]; description: Text[100]; description2: Text[50]; areaCosteo: Code[20]; centroCosto: Code[20]): Text
+    procedure CreateWork(obraNo: Code[20]; description: Text[100]; description2: Text[50]; areaCosteo: Code[20]; centroCosto: Code[20]; tiposInventario: Text): Text
     var
         Works: Record "GomJob Works";
         acField: Integer;
@@ -46,6 +46,9 @@ codeunit 50240 "Adelante Obra Actions"
         // 2) Con el Work ya existente: valor de dimensión del CC (propio de la obra) y almacén.
         EnsureDimensionValue(DimCentroCosto(), centroCosto, description);
         EnsureLocation(obraNo, description);
+
+        // 2b) Inventory Posting Setup por cada tipo de inventario recibido (idempotente).
+        CreateInventoryPostingSetups(obraNo, tiposInventario);
 
         // 3) AC = dimensión de atajo/global (campo "Área de Costo" de la ficha). Se asigna con
         //    ValidateShortcutDimCode, que YA persiste la Default Dimension y el campo global por
@@ -140,6 +143,49 @@ codeunit 50240 "Adelante Obra Actions"
         if dimCode = GLSetup."Shortcut Dimension 7 Code" then exit(7);
         if dimCode = GLSetup."Shortcut Dimension 8 Code" then exit(8);
         exit(0);
+    end;
+
+    /// <summary>
+    /// Crea una fila de Inventory Posting Setup por cada tipo de inventario de la lista CSV
+    /// (ej. "MATERIALES,SUMINISTROS"), para el almacén de la obra. Idempotente. Cuenta de
+    /// inventario fija (Inventario de producto en proceso).
+    /// </summary>
+    local procedure CreateInventoryPostingSetups(obraNo: Code[20]; tiposInventario: Text)
+    var
+        grupos: List of [Text];
+        g: Text;
+        locCode: Code[10];
+        grp: Code[20];
+    begin
+        if tiposInventario = '' then
+            exit;
+        locCode := CopyStr(obraNo, 1, MaxStrLen(locCode));
+        grupos := tiposInventario.Split(',');
+        foreach g in grupos do begin
+            grp := CopyStr(DelChr(g, '<>', ' '), 1, MaxStrLen(grp)); // trim espacios y ajustar a Code[20]
+            if grp <> '' then
+                EnsureInventoryPostingSetup(locCode, grp);
+        end;
+    end;
+
+    local procedure EnsureInventoryPostingSetup(locationCode: Code[10]; postingGroup: Code[20])
+    var
+        InvtPostingSetup: Record "Inventory Posting Setup";
+    begin
+        if (locationCode = '') or (postingGroup = '') then
+            exit;
+        if InvtPostingSetup.Get(locationCode, postingGroup) then
+            exit; // ya existe -> no duplicar
+        InvtPostingSetup.Init();
+        InvtPostingSetup.Validate("Location Code", locationCode);
+        InvtPostingSetup.Validate("Invt. Posting Group Code", postingGroup);
+        InvtPostingSetup.Validate("Inventory Account", InventoryAccountNo());
+        InvtPostingSetup.Insert(true);
+    end;
+
+    local procedure InventoryAccountNo(): Code[20]
+    begin
+        exit('10-10-006-000-010'); // Inventario de producto en proceso (cuenta fija)
     end;
 
     /// <summary>Crea el almacén (Location) con código = N° de obra si aún no existe.</summary>
