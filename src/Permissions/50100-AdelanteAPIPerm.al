@@ -38,6 +38,7 @@ permissionset 50100 "Adelante API RIMD"
         tabledata "GJW Bulk Buffer" = RIMD,
         tabledata "GJW Material Operation" = RIMD,
         tabledata "GJW Material Operation Step" = RIMD,
+        tabledata "Adelante Postventa Setup" = RIMD,
         tabledata "Default Dimension" = RIMD,
         tabledata "Dimension Value" = RIMD,
         tabledata "General Ledger Setup" = R,
@@ -81,6 +82,7 @@ permissionset 50100 "Adelante API RIMD"
         page "Adelante Item API" = X,
         page "Adelante Item Variant API" = X,
         page "Adelante Inventory by Location" = X,
+        page "Adelante Postventa Setup" = X,
         page "GJW Post Job Journal API" = X,        //        page "GJW Job Journal Line API" = X,
 
 

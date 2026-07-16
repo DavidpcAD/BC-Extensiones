@@ -163,7 +163,76 @@ codeunit 50240 "Adelante Obra Actions"
             DimValue.Modify(true);
         end;
 
+        // 4) Actividad en la obra Postventa del desarrollo (alta con blocked=true;
+        //    marcar como Revertida con blocked=false — no se borra, queda histórico).
+        UpsertPostventaActivity(obraNo, Works.Description, blocked);
+
         exit('OK');
+    end;
+
+    /// <summary>
+    /// Da de alta (o marca como revertida) la actividad de la obra en la obra Postventa del
+    /// desarrollo. La PV se resuelve por el prefijo del N° de obra (texto antes del primer '-')
+    /// contra "Adelante Postventa Setup". La actividad es una línea de GomJob Works Line con
+    /// Task Type = Posting (se muestra como "Auxiliar"), Task No. = N° de la obra (idempotencia).
+    /// blocked=true crea/reactiva; blocked=false marca Revertida (no borra). Error claro si no
+    /// hay mapeo o la PV no existe.
+    /// </summary>
+    local procedure UpsertPostventaActivity(obraNo: Code[20]; description: Text[100]; blocked: Boolean)
+    var
+        Setup: Record "Adelante Postventa Setup";
+        PVWorks: Record "GomJob Works";
+        WorksLine: Record "GomJob Works Line";
+        prefijo: Code[20];
+        pvNo: Code[20];
+        versionCode: Code[20];
+        p: Integer;
+    begin
+        // Prefijo = texto antes del primer guión (VN-A.06 -> VN).
+        p := StrPos(obraNo, '-');
+        if p > 1 then
+            prefijo := CopyStr(obraNo, 1, p - 1)
+        else
+            prefijo := obraNo;
+
+        if not Setup.Get(prefijo) then begin
+            if blocked then
+                Error('No hay obra Postventa configurada para el prefijo "%1" (obra %2). Configurala en "Adelante Postventa Setup".', prefijo, obraNo);
+            exit; // desbloqueando sin mapeo: nada que revertir
+        end;
+        pvNo := Setup."Obra Postventa No.";
+
+        if not PVWorks.Get(pvNo) then begin
+            if blocked then
+                Error('La obra Postventa "%1" (prefijo %2) no existe en BC.', pvNo, prefijo);
+            exit;
+        end;
+        versionCode := PVWorks.GetLatestVersionCode();
+
+        if blocked then begin
+            if WorksLine.Get(pvNo, versionCode, WorksLine."Line Type"::Cost, obraNo) then begin
+                WorksLine."Adelante Revertida" := false;
+                WorksLine.Modify(true);
+            end else begin
+                WorksLine.Init();
+                WorksLine."Works No." := pvNo;
+                WorksLine."Version Code" := versionCode;
+                WorksLine."Line Type" := WorksLine."Line Type"::Cost;
+                WorksLine."Task No." := obraNo;
+                WorksLine."Job No." := pvNo;
+                WorksLine."Task Type" := WorksLine."Task Type"::Posting; // "Auxiliar" en la UI de GomJob
+                WorksLine.Description := CopyStr(description, 1, MaxStrLen(WorksLine.Description));
+                WorksLine.Quantity := 1;
+                WorksLine."Adelante Revertida" := false;
+                WorksLine.Insert(true);
+            end;
+        end else begin
+            if WorksLine.Get(pvNo, versionCode, WorksLine."Line Type"::Cost, obraNo) then begin
+                WorksLine."Adelante Revertida" := true;
+                WorksLine."Adelante Fecha Reversa" := Today();
+                WorksLine.Modify(true);
+            end;
+        end;
     end;
 
     /// <summary>Bloquea la obra (atajo de SetObraBlocked con blocked=true).</summary>
