@@ -126,6 +126,52 @@ codeunit 50240 "Adelante Obra Actions"
         exit('OK');
     end;
 
+    /// <summary>
+    /// Bloquea (o desbloquea) una obra en un solo paso, replicando el proceso manual:
+    ///   1) Obra (GomJob Works): Blocked = blocked
+    ///   2) Proyecto (Job): Blocked = All (Todo) si blocked; sin bloqueo si no
+    ///   3) Valor de dimensión CC de la obra (Code = N° obra): Blocked = blocked
+    /// blocked=true bloquea; blocked=false revierte los tres.
+    /// </summary>
+    procedure SetObraBlocked(obraNo: Code[20]; blocked: Boolean): Text
+    var
+        Works: Record "GomJob Works";
+        Job: Record Job;
+        DimValue: Record "Dimension Value";
+    begin
+        if obraNo = '' then
+            Error('Falta el N.º de obra.');
+        if not Works.Get(obraNo) then
+            Error('La obra %1 no existe en BC.', obraNo);
+
+        // 1) Obra (GomJob Works)
+        Works.Validate(Blocked, blocked);
+        Works.Modify(true);
+
+        // 2) Proyecto (Job) — mismo N° que la obra. Bloqueado = Todo (All).
+        if Job.Get(obraNo) then begin
+            if blocked then
+                Job.Validate(Blocked, Job.Blocked::All)
+            else
+                Job.Validate(Blocked, Job.Blocked::" ");
+            Job.Modify(true);
+        end;
+
+        // 3) Valor de dimensión CC de la obra (Code = N° de obra)
+        if DimValue.Get(DimCentroCosto(), obraNo) then begin
+            DimValue.Validate(Blocked, blocked);
+            DimValue.Modify(true);
+        end;
+
+        exit('OK');
+    end;
+
+    /// <summary>Bloquea la obra (atajo de SetObraBlocked con blocked=true).</summary>
+    procedure BlockWork(obraNo: Code[20]): Text
+    begin
+        exit(SetObraBlocked(obraNo, true));
+    end;
+
     /// <summary>Devuelve el N° de dimensión de atajo (1-8) de un código de dimensión, o 0 si no es de atajo.</summary>
     local procedure ShortcutFieldNo(dimCode: Code[20]): Integer
     var
