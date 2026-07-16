@@ -164,7 +164,7 @@ codeunit 50230 "Adelante PO Actions"
 
         // Distribuir los cargos de producto (flete) por importe entre las líneas de
         // artículo que se reciben/facturan en esta factura, antes de registrar.
-        AsignarCargosProducto(PurchHeader, true);
+        AsignarCargosProducto(PurchHeader, true, MenuTextForMethod(''));
 
         PurchPost.Run(PurchHeader);
         postedNo := PurchHeader."Last Posting No.";
@@ -255,7 +255,7 @@ codeunit 50230 "Adelante PO Actions"
         // Distribuir los cargos de producto (flete) por importe entre las líneas de
         // artículo que se reciben en esta recepción. El cargo se recibe (no se factura);
         // la factura posterior (PostInvoiceOfReceived) conservará esta asignación.
-        AsignarCargosProducto(PurchHeader, true);
+        AsignarCargosProducto(PurchHeader, true, MenuTextForMethod(''));
 
         PurchPost.Run(PurchHeader);
         postedNo := PurchHeader."Last Receiving No.";
@@ -344,7 +344,7 @@ codeunit 50230 "Adelante PO Actions"
 
         // Facturar el cargo de producto ya recibido: conserva la asignación creada en la
         // recepción y solo ajusta la cantidad a facturar (o la crea si no existiera).
-        AsignarCargosProducto(PurchHeader, true);
+        AsignarCargosProducto(PurchHeader, true, MenuTextForMethod(''));
 
         PurchPost.Run(PurchHeader);
         postedNo := PurchHeader."Last Posting No.";
@@ -360,13 +360,35 @@ codeunit 50230 "Adelante PO Actions"
     /// sobrescribe una asignación ya existente. Devuelve 'OK'. (Igual se auto-asigna al
     /// registrar; esta acción permite dispararlo antes desde la app.)
     /// </summary>
-    procedure AssignItemCharges(orderNo: Code[20]): Text
+    procedure AssignItemCharges(orderNo: Code[20]; metodo: Text): Text
     var
         PurchHeader: Record "Purchase Header";
     begin
         GetOrder(PurchHeader, orderNo);
-        AsignarCargosProducto(PurchHeader, false);
+        AsignarCargosProducto(PurchHeader, false, MenuTextForMethod(metodo));
         exit('OK');
+    end;
+
+    /// <summary>
+    /// Devuelve el "menu text" del método de asignación de cargo para "Item Charge Assgnt.
+    /// (Purch.)". metodo: Equally | Amount | Weight | Volume. Vacío o desconocido => Amount
+    /// (por importe, el default). Ojo: Weight/Volume solo reparten si los ítems tienen
+    /// Gross Weight / Unit Volume en su ficha.
+    /// </summary>
+    local procedure MenuTextForMethod(metodo: Text): Text
+    var
+        ItemChargeMgt: Codeunit "Item Charge Assgnt. (Purch.)";
+    begin
+        case UpperCase(metodo) of
+            'EQUALLY':
+                exit(ItemChargeMgt.AssignEquallyMenuText());
+            'WEIGHT':
+                exit(ItemChargeMgt.AssignByWeightMenuText());
+            'VOLUME':
+                exit(ItemChargeMgt.AssignByVolumeMenuText());
+            else
+                exit(ItemChargeMgt.AssignByAmountMenuText());
+        end;
     end;
 
     local procedure GetOrder(var PurchHeader: Record "Purchase Header"; orderNo: Code[20])
@@ -413,7 +435,7 @@ codeunit 50230 "Adelante PO Actions"
     /// líneas de artículo del documento, sin tocar cantidades y sin sobrescribir asignaciones
     /// ya existentes.
     /// </summary>
-    local procedure AsignarCargosProducto(var PurchHeader: Record "Purchase Header"; EnRegistro: Boolean)
+    local procedure AsignarCargosProducto(var PurchHeader: Record "Purchase Header"; EnRegistro: Boolean; metodoMenuText: Text)
     var
         ChargeLine: Record "Purchase Line";
         LineNos: List of [Integer];
@@ -431,16 +453,16 @@ codeunit 50230 "Adelante PO Actions"
         // Se recorre por número de línea (no sobre el propio FindSet) porque cada iteración
         // modifica la línea de cargo y la tabla de asignación.
         foreach LineNo in LineNos do
-            ProcesarCargo(PurchHeader, LineNo, EnRegistro);
+            ProcesarCargo(PurchHeader, LineNo, EnRegistro, metodoMenuText);
     end;
 
     [TryFunction]
     local procedure TryAsignarCargosEnLanzamiento(var PurchHeader: Record "Purchase Header")
     begin
-        AsignarCargosProducto(PurchHeader, false);
+        AsignarCargosProducto(PurchHeader, false, MenuTextForMethod(''));
     end;
 
-    local procedure ProcesarCargo(var PurchHeader: Record "Purchase Header"; ChargeLineNo: Integer; EnRegistro: Boolean)
+    local procedure ProcesarCargo(var PurchHeader: Record "Purchase Header"; ChargeLineNo: Integer; EnRegistro: Boolean; metodoMenuText: Text)
     var
         ChargeLine: Record "Purchase Line";
         QtyPend: Decimal;
@@ -455,7 +477,7 @@ codeunit 50230 "Adelante PO Actions"
             // Lanzamiento: asignar entre todas las líneas de artículo si aún no está asignado
             // (no se sobrescribe una asignación manual previa).
             if not AsignacionExiste(ChargeLine) then
-                ConstruirAsignacion(ChargeLine, false, false);
+                ConstruirAsignacion(ChargeLine, false, false, metodoMenuText);
             exit;
         end;
 
@@ -478,12 +500,12 @@ codeunit 50230 "Adelante PO Actions"
 
         if PurchHeader.Receive then
             // Recibiendo (con o sin factura): (re)distribuir sobre las líneas que se reciben ahora.
-            ConstruirAsignacion(ChargeLine, true, true)
+            ConstruirAsignacion(ChargeLine, true, true, metodoMenuText)
         else
             // Solo factura de lo ya recibido: conservar la asignación creada en la recepción
             // (Validate("Qty. to Invoice") ya rebalanceó lo "a tramitar"). Crearla si faltara.
             if not AsignacionExiste(ChargeLine) then
-                ConstruirAsignacion(ChargeLine, true, false);
+                ConstruirAsignacion(ChargeLine, true, false, metodoMenuText);
     end;
 
     /// <summary>
@@ -492,7 +514,7 @@ codeunit 50230 "Adelante PO Actions"
     /// o se facturan (PorRecepcion=false) en este registro; false asigna a todas las líneas
     /// de artículo del documento.
     /// </summary>
-    local procedure ConstruirAsignacion(var ChargeLine: Record "Purchase Line"; SoloEnProceso: Boolean; PorRecepcion: Boolean)
+    local procedure ConstruirAsignacion(var ChargeLine: Record "Purchase Line"; SoloEnProceso: Boolean; PorRecepcion: Boolean; metodoMenuText: Text)
     var
         ItemChargeAssgnt: Record "Item Charge Assignment (Purch)";
         TargetLine: Record "Purchase Line";
@@ -534,9 +556,9 @@ codeunit 50230 "Adelante PO Actions"
               'Recibí o factura al menos un artículo junto con el cargo.',
               ChargeLine."No.", ChargeLine."Document No.");
 
-        // 5) Distribuir por importe (equivale a "Sugerir asignación de cargo → Por importe").
+        // 5) Distribuir con el método indicado (default Por importe).
         ItemChargeMgt.AssignItemCharges(
-          ChargeLine, ChargeLine.Quantity, ChargeLine."Line Amount", ItemChargeMgt.AssignByAmountMenuText());
+          ChargeLine, ChargeLine.Quantity, ChargeLine."Line Amount", metodoMenuText);
     end;
 
     local procedure LineaEnProceso(TargetLine: Record "Purchase Line"; PorRecepcion: Boolean): Boolean
