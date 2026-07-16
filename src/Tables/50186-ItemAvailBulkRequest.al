@@ -17,6 +17,9 @@ table 50186 "GJW Item Avail Bulk Request"
         {
             Caption = 'Items JSON';
             DataClassification = CustomerContent;
+            ObsoleteState = Pending;
+            ObsoleteReason = 'Reemplazado por "Items Json Blob" para soportar JSON de largo arbitrario (evita truncado a 2048).';
+            ObsoleteTag = '2026-06-18-AvailBulkBlob';
         }
         field(3; "Location Code"; Code[10])
         {
@@ -46,6 +49,19 @@ table 50186 "GJW Item Avail Bulk Request"
         field(8; "Result Json"; Text[2048])
         {
             Caption = 'Result JSON';
+            DataClassification = CustomerContent;
+            ObsoleteState = Pending;
+            ObsoleteReason = 'Reemplazado por "Result Json Blob" para soportar JSON de largo arbitrario (evita truncado a 2048).';
+            ObsoleteTag = '2026-06-18-AvailBulkBlob';
+        }
+        field(9; "Result Json Blob"; Blob)
+        {
+            Caption = 'Result JSON Blob';
+            DataClassification = CustomerContent;
+        }
+        field(10; "Items Json Blob"; Blob)
+        {
+            Caption = 'Items JSON Blob';
             DataClassification = CustomerContent;
         }
     }

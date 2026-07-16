@@ -60,7 +60,7 @@ page 50208 "GJW Item Avail By Item Single"
                 Caption = 'Error Message';
                 Editable = false;
             }
-            field(resultJson; Rec."Result Json")
+            field(resultJson; ResultJsonText)
             {
                 Caption = 'Result JSON';
                 Editable = false;
@@ -68,13 +68,22 @@ page 50208 "GJW Item Avail By Item Single"
         }
     }
 
+    var
+        ResultJsonText: Text;
+
+    trigger OnAfterGetRecord()
+    begin
+        // Recargar el JSON completo desde el Blob: la respuesta OData del POST
+        // re-lee el registro, y sin esto el string saldria vacio en la respuesta.
+        ResultJsonText := LoadResultJsonBlob();
+    end;
+
     trigger OnInsertRecord(BelowxRec: Boolean): Boolean
     var
         Item: Record Item;
         RequestGuid: Guid;
         LocationFilter: Text;
         AsOfDate: Date;
-        ResultJson: Text;
     begin
         if Rec."Item No." = '' then
             Error('itemNo es requerido');
@@ -91,11 +100,36 @@ page 50208 "GJW Item Avail By Item Single"
 
         RequestGuid := CreateGuid();
         Rec."Requested At" := CurrentDateTime();
-        ResultJson := ProcessAndBuildJson(Rec."Item No.", Rec."Variant Code", LocationFilter, AsOfDate, Item."Base Unit of Measure");
+        ResultJsonText := ProcessAndBuildJson(Rec."Item No.", Rec."Variant Code", LocationFilter, AsOfDate, Item."Base Unit of Measure");
         Rec."Request Id" := DelChr(Format(RequestGuid), '=', '{}');
-        Rec."Result Json" := CopyStr(ResultJson, 1, MaxStrLen(Rec."Result Json"));
+        // Persistir en Blob (sin tope de largo) en vez del Text[2048] que truncaba.
+        SaveResultJsonBlob(ResultJsonText);
         Rec.Status := 'OK';
         exit(true);
+    end;
+
+    local procedure SaveResultJsonBlob(TextValue: Text)
+    var
+        OutStr: OutStream;
+    begin
+        Clear(Rec."Result Json Blob");
+        Rec."Result Json Blob".CreateOutStream(OutStr, TextEncoding::UTF8);
+        OutStr.WriteText(TextValue);
+    end;
+
+    local procedure LoadResultJsonBlob(): Text
+    var
+        InStr: InStream;
+        TextValue: Text;
+    begin
+        // El JSON de JsonArray.WriteTo es compacto (una sola linea), asi que
+        // un unico ReadText devuelve el contenido completo del Blob.
+        Rec.CalcFields("Result Json Blob");
+        if not Rec."Result Json Blob".HasValue() then
+            exit('');
+        Rec."Result Json Blob".CreateInStream(InStr, TextEncoding::UTF8);
+        InStr.ReadText(TextValue);
+        exit(TextValue);
     end;
 
     local procedure ProcessAndBuildJson(ItemNo: Code[20]; VariantCode: Code[10]; LocationFilter: Text; AsOfDate: Date; UnitOfMeasure: Code[10]): Text

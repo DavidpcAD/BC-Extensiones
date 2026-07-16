@@ -52,10 +52,18 @@ table 50211 "GJW Item Avail By Item Req"
         {
             Caption = 'Result JSON';
             DataClassification = CustomerContent;
+            ObsoleteState = Pending;
+            ObsoleteReason = 'Reemplazado por "Result Json Blob" para soportar JSON de largo arbitrario (evita truncado a 2048).';
+            ObsoleteTag = '2026-06-18-AvailBulkBlob';
         }
         field(10; "As Of Date"; Date)
         {
             Caption = 'As Of Date';
+            DataClassification = CustomerContent;
+        }
+        field(11; "Result Json Blob"; Blob)
+        {
+            Caption = 'Result JSON Blob';
             DataClassification = CustomerContent;
         }
     }

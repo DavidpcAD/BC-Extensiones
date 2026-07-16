@@ -27,7 +27,7 @@ page 50183 "GJW Item Avail Bulk Single"
                 Caption = 'Id';
                 Editable = false;
             }
-            field(itemsJson; Rec."Items Json")
+            field(itemsJson; ItemsJsonText)
             {
                 Caption = 'Items JSON';
             }
@@ -50,7 +50,7 @@ page 50183 "GJW Item Avail Bulk Single"
                 Caption = 'Error Message';
                 Editable = false;
             }
-            field(resultJson; Rec."Result Json")
+            field(resultJson; ResultJsonText)
             {
                 Caption = 'Result JSON';
                 Editable = false;
@@ -58,23 +58,85 @@ page 50183 "GJW Item Avail Bulk Single"
         }
     }
 
+    var
+        ItemsJsonText: Text;
+        ResultJsonText: Text;
+
+    trigger OnAfterGetRecord()
+    begin
+        // Recargar el JSON completo desde el Blob: la respuesta OData del POST
+        // re-lee el registro, y sin esto el string saldria vacio en la respuesta.
+        ItemsJsonText := LoadItemsJsonBlob();
+        ResultJsonText := LoadResultJsonBlob();
+    end;
+
     trigger OnInsertRecord(BelowxRec: Boolean): Boolean
     var
         RequestGuid: Guid;
-        ResultJson: Text;
     begin
         if Rec."Location Code" = '' then
             Error('locationCode es requerido');
-        if Rec."Items Json" = '' then
+        if ItemsJsonText = '' then
             Error('itemsJson es requerido');
 
         RequestGuid := CreateGuid();
         Rec."Requested At" := CurrentDateTime();
-        ResultJson := ProcessAndBuildJson(Rec."Items Json", Rec."Location Code", RequestGuid);
+
+        // ItemsJsonText es una variable Text sin longitud: no topa en 2048 al entrar.
+        ResultJsonText := ProcessAndBuildJson(ItemsJsonText, Rec."Location Code", RequestGuid);
+
         Rec."Request Id" := DelChr(Format(RequestGuid), '=', '{}');
-        Rec."Result Json" := CopyStr(ResultJson, 1, MaxStrLen(Rec."Result Json"));
+        // Persistir en Blob (sin tope de largo) en vez del Text[2048] que truncaba.
+        SaveItemsJsonBlob(ItemsJsonText);
+        SaveResultJsonBlob(ResultJsonText);
         Rec.Status := 'OK';
         exit(true);
+    end;
+
+    local procedure SaveItemsJsonBlob(TextValue: Text)
+    var
+        OutStr: OutStream;
+    begin
+        Clear(Rec."Items Json Blob");
+        Rec."Items Json Blob".CreateOutStream(OutStr, TextEncoding::UTF8);
+        OutStr.WriteText(TextValue);
+    end;
+
+    local procedure SaveResultJsonBlob(TextValue: Text)
+    var
+        OutStr: OutStream;
+    begin
+        Clear(Rec."Result Json Blob");
+        Rec."Result Json Blob".CreateOutStream(OutStr, TextEncoding::UTF8);
+        OutStr.WriteText(TextValue);
+    end;
+
+    local procedure LoadItemsJsonBlob(): Text
+    var
+        InStr: InStream;
+        TextValue: Text;
+    begin
+        Rec.CalcFields("Items Json Blob");
+        if not Rec."Items Json Blob".HasValue() then
+            exit('');
+        Rec."Items Json Blob".CreateInStream(InStr, TextEncoding::UTF8);
+        InStr.ReadText(TextValue);
+        exit(TextValue);
+    end;
+
+    local procedure LoadResultJsonBlob(): Text
+    var
+        InStr: InStream;
+        TextValue: Text;
+    begin
+        // El JSON de JsonArray.WriteTo es compacto (una sola linea), asi que
+        // un unico ReadText devuelve el contenido completo del Blob.
+        Rec.CalcFields("Result Json Blob");
+        if not Rec."Result Json Blob".HasValue() then
+            exit('');
+        Rec."Result Json Blob".CreateInStream(InStr, TextEncoding::UTF8);
+        InStr.ReadText(TextValue);
+        exit(TextValue);
     end;
 
     local procedure ProcessAndBuildJson(itemsJson: Text; locationCode: Code[10]; RequestGuid: Guid): Text
