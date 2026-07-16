@@ -353,6 +353,22 @@ codeunit 50230 "Adelante PO Actions"
         exit(postedNo);
     end;
 
+    /// <summary>
+    /// Sugerir asignación de los cargos de producto (flete, etc.) POR IMPORTE sobre el pedido
+    /// ABIERTO, distribuyendo entre todas sus líneas de artículo (equivale a la acción estándar
+    /// "Asignación cargos prod. → Sugerir asignación → Por importe"). Idempotente: no
+    /// sobrescribe una asignación ya existente. Devuelve 'OK'. (Igual se auto-asigna al
+    /// registrar; esta acción permite dispararlo antes desde la app.)
+    /// </summary>
+    procedure AssignItemCharges(orderNo: Code[20]): Text
+    var
+        PurchHeader: Record "Purchase Header";
+    begin
+        GetOrder(PurchHeader, orderNo);
+        AsignarCargosProducto(PurchHeader, false);
+        exit('OK');
+    end;
+
     local procedure GetOrder(var PurchHeader: Record "Purchase Header"; orderNo: Code[20])
     begin
         PurchHeader.Reset();
