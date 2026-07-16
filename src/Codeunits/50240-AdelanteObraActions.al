@@ -133,11 +133,12 @@ codeunit 50240 "Adelante Obra Actions"
     ///   3) Valor de dimensión CC de la obra (Code = N° obra): Blocked = blocked
     /// blocked=true bloquea; blocked=false revierte los tres.
     /// </summary>
-    procedure SetObraBlocked(obraNo: Code[20]; blocked: Boolean): Text
+    procedure SetObraBlocked(obraNo: Code[20]; blocked: Boolean; postventaNo: Code[20]): Text
     var
         Works: Record "GomJob Works";
         Job: Record Job;
         DimValue: Record "Dimension Value";
+        pvNo: Code[20];
     begin
         if obraNo = '' then
             Error('Falta el N.º de obra.');
@@ -163,48 +164,58 @@ codeunit 50240 "Adelante Obra Actions"
             DimValue.Modify(true);
         end;
 
-        // 4) Actividad en la obra Postventa del desarrollo (alta con blocked=true;
-        //    marcar como Revertida con blocked=false — no se borra, queda histórico).
-        UpsertPostventaActivity(obraNo, Works.Description, blocked);
+        // 4) Actividad en la obra Postventa ELEGIDA por el usuario (postventaNo). Si no viene,
+        //    se intenta resolver por el prefijo (fallback). Con blocked=true da de alta; con
+        //    blocked=false marca Revertida (no borra).
+        pvNo := ResolvePostventaNo(obraNo, postventaNo, blocked);
+        if pvNo <> '' then
+            UpsertPostventaActivity(obraNo, pvNo, Works.Description, blocked);
 
         exit('OK');
     end;
 
     /// <summary>
-    /// Da de alta (o marca como revertida) la actividad de la obra en la obra Postventa del
-    /// desarrollo. La PV se resuelve por el prefijo del N° de obra (texto antes del primer '-')
-    /// contra "Adelante Postventa Setup". La actividad es una línea de GomJob Works Line con
-    /// Task Type = Posting (se muestra como "Auxiliar"), Task No. = N° de la obra (idempotencia).
-    /// blocked=true crea/reactiva; blocked=false marca Revertida (no borra). Error claro si no
-    /// hay mapeo o la PV no existe.
+    /// Determina la obra Postventa destino: 1) la que eligió el usuario (postventaNo); 2) si
+    /// viene vacía, la del mapeo por prefijo en "Adelante Postventa Setup" (fallback). Si no
+    /// hay ninguna y se está bloqueando, Error claro. Al desbloquear sin dato, devuelve ''.
     /// </summary>
-    local procedure UpsertPostventaActivity(obraNo: Code[20]; description: Text[100]; blocked: Boolean)
+    local procedure ResolvePostventaNo(obraNo: Code[20]; postventaNo: Code[20]; blocked: Boolean): Code[20]
     var
         Setup: Record "Adelante Postventa Setup";
-        PVWorks: Record "GomJob Works";
-        WorksLine: Record "GomJob Works Line";
         prefijo: Code[20];
-        pvNo: Code[20];
-        versionCode: Code[20];
         p: Integer;
     begin
-        // Prefijo = texto antes del primer guión (VN-A.06 -> VN).
+        if postventaNo <> '' then
+            exit(postventaNo);
+
         p := StrPos(obraNo, '-');
         if p > 1 then
             prefijo := CopyStr(obraNo, 1, p - 1)
         else
             prefijo := obraNo;
+        if Setup.Get(prefijo) then
+            exit(Setup."Obra Postventa No.");
 
-        if not Setup.Get(prefijo) then begin
-            if blocked then
-                Error('No hay obra Postventa configurada para el prefijo "%1" (obra %2). Configurala en "Adelante Postventa Setup".', prefijo, obraNo);
-            exit; // desbloqueando sin mapeo: nada que revertir
-        end;
-        pvNo := Setup."Obra Postventa No.";
+        if blocked then
+            Error('Elegí una obra Postventa (PV-…) para registrar la actividad de %1, o configurá el prefijo "%2" en "Adelante Postventa Setup".', obraNo, prefijo);
+        exit('');
+    end;
 
+    /// <summary>
+    /// Da de alta (o marca como revertida) la actividad de la obra en la obra Postventa dada
+    /// (pvNo, ya resuelta por ResolvePostventaNo). La actividad es una línea de GomJob Works
+    /// Line con Task Type = Posting (se muestra como "Auxiliar"), Task No. = N° de la obra
+    /// (idempotencia). blocked=true crea/reactiva; blocked=false marca Revertida (no borra).
+    /// </summary>
+    local procedure UpsertPostventaActivity(obraNo: Code[20]; pvNo: Code[20]; description: Text[100]; blocked: Boolean)
+    var
+        PVWorks: Record "GomJob Works";
+        WorksLine: Record "GomJob Works Line";
+        versionCode: Code[20];
+    begin
         if not PVWorks.Get(pvNo) then begin
             if blocked then
-                Error('La obra Postventa "%1" (prefijo %2) no existe en BC.', pvNo, prefijo);
+                Error('La obra Postventa "%1" no existe en BC.', pvNo);
             exit;
         end;
         versionCode := PVWorks.GetLatestVersionCode();
@@ -235,10 +246,10 @@ codeunit 50240 "Adelante Obra Actions"
         end;
     end;
 
-    /// <summary>Bloquea la obra (atajo de SetObraBlocked con blocked=true).</summary>
+    /// <summary>Bloquea la obra (atajo). La Postventa se resuelve por prefijo (sin selección).</summary>
     procedure BlockWork(obraNo: Code[20]): Text
     begin
-        exit(SetObraBlocked(obraNo, true));
+        exit(SetObraBlocked(obraNo, true, ''));
     end;
 
     /// <summary>Devuelve el N° de dimensión de atajo (1-8) de un código de dimensión, o 0 si no es de atajo.</summary>
