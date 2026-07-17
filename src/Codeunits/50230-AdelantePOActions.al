@@ -88,7 +88,7 @@ codeunit 50230 "Adelante PO Actions"
     /// quedan en 0 (el pedido sigue abierto hasta completar todo). Devuelve el N.º de
     /// la factura de compra registrada.
     /// </summary>
-    procedure PostInvoice(orderNo: Code[20]; vendorInvoiceNo: Code[35]; linesJson: Text): Text
+    procedure PostInvoice(orderNo: Code[20]; vendorInvoiceNo: Code[35]; linesJson: Text; postingDate: Date): Text
     var
         PurchHeader: Record "Purchase Header";
         PurchLine: Record "Purchase Line";
@@ -111,7 +111,10 @@ codeunit 50230 "Adelante PO Actions"
 
         // Encabezado: N.º factura proveedor + modo Recibir y Facturar.
         PurchHeader.Validate("Vendor Invoice No.", vendorInvoiceNo);
-        PurchHeader."Posting Date" := Today();
+        if postingDate = 0D then
+            postingDate := Today();
+        PurchHeader.Validate("Posting Date", postingDate);
+        PurchHeader.Validate("Document Date", postingDate);
         PurchHeader.Receive := true;
         PurchHeader.Invoice := true;
         PurchHeader.Modify(true);
@@ -181,7 +184,7 @@ codeunit 50230 "Adelante PO Actions"
     /// PostInvoiceOfReceived). linesJson = [{"itemNo":"M05-0037","qty":3}, ...] con la
     /// cantidad recibida en ESTA recepción por línea. Devuelve el N.º de recepción registrada.
     /// </summary>
-    procedure PostReceipt(orderNo: Code[20]; linesJson: Text): Text
+    procedure PostReceipt(orderNo: Code[20]; linesJson: Text; postingDate: Date): Text
     var
         PurchHeader: Record "Purchase Header";
         PurchLine: Record "Purchase Line";
@@ -201,7 +204,10 @@ codeunit 50230 "Adelante PO Actions"
             Error('No se pudieron leer las líneas (JSON inválido).');
 
         // Encabezado: solo Recibir (sin factura).
-        PurchHeader."Posting Date" := Today();
+        if postingDate = 0D then
+            postingDate := Today();
+        PurchHeader.Validate("Posting Date", postingDate);
+        PurchHeader.Validate("Document Date", postingDate);
         PurchHeader.Receive := true;
         PurchHeader.Invoice := false;
         PurchHeader.Modify(true);
@@ -269,7 +275,7 @@ codeunit 50230 "Adelante PO Actions"
     /// ("Qty. Rcd. Not Invoiced"). linesJson = [{"itemNo":"M05-0037","qty":3}, ...] con la
     /// cantidad a facturar por línea. Devuelve el N.º de la factura de compra registrada.
     /// </summary>
-    procedure PostInvoiceOfReceived(orderNo: Code[20]; vendorInvoiceNo: Code[35]; linesJson: Text): Text
+    procedure PostInvoiceOfReceived(orderNo: Code[20]; vendorInvoiceNo: Code[35]; linesJson: Text; postingDate: Date): Text
     var
         PurchHeader: Record "Purchase Header";
         PurchLine: Record "Purchase Line";
@@ -292,7 +298,10 @@ codeunit 50230 "Adelante PO Actions"
 
         // Encabezado: solo Facturar (sin recibir de nuevo).
         PurchHeader.Validate("Vendor Invoice No.", vendorInvoiceNo);
-        PurchHeader."Posting Date" := Today();
+        if postingDate = 0D then
+            postingDate := Today();
+        PurchHeader.Validate("Posting Date", postingDate);
+        PurchHeader.Validate("Document Date", postingDate);
         PurchHeader.Receive := false;
         PurchHeader.Invoice := true;
         PurchHeader.Modify(true);
@@ -399,7 +408,7 @@ codeunit 50230 "Adelante PO Actions"
     /// receiptLinesJson = [{"documentNo":"CR-000003","lineNo":10000}, ...].
     /// NOTA: es distinto del cargo del propio pedido (que asigna a líneas del mismo pedido).
     /// </summary>
-    procedure PostChargeOnReceipts(chargeVendorNo: Code[20]; itemChargeNo: Code[20]; chargeAmount: Decimal; vendorInvoiceNo: Code[35]; metodo: Text; receiptLinesJson: Text): Text
+    procedure PostChargeOnReceipts(chargeVendorNo: Code[20]; itemChargeNo: Code[20]; chargeAmount: Decimal; vendorInvoiceNo: Code[35]; metodo: Text; receiptLinesJson: Text; postingDate: Date): Text
     var
         PurchHeader: Record "Purchase Header";
         ChargeLine: Record "Purchase Line";
@@ -435,7 +444,10 @@ codeunit 50230 "Adelante PO Actions"
         PurchHeader.Insert(true);
         PurchHeader.Validate("Buy-from Vendor No.", chargeVendorNo);
         PurchHeader.Validate("Vendor Invoice No.", vendorInvoiceNo);
-        PurchHeader."Posting Date" := Today();
+        if postingDate = 0D then
+            postingDate := Today();
+        PurchHeader.Validate("Posting Date", postingDate);
+        PurchHeader.Validate("Document Date", postingDate);
         PurchHeader.Modify(true);
 
         // 2) Única línea de cargo (Charge (Item)).
