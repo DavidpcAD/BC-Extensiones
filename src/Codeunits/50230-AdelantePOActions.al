@@ -414,16 +414,22 @@ codeunit 50230 "Adelante PO Actions"
         ChargeLine: Record "Purchase Line";
         PurchRcptLine: Record "Purch. Rcpt. Line";
         ItemChargeAssgnt: Record "Item Charge Assignment (Purch)";
-        ItemChargeMgt: Codeunit "Item Charge Assgnt. (Purch.)";
         PurchPost: Codeunit "Purch.-Post";
         JArr: JsonArray;
         JTok: JsonToken;
         JObj: JsonObject;
         v: JsonToken;
+        docNos: List of [Text];
+        lineNos: List of [Integer];
+        weights: List of [Decimal];
         docNo: Code[20];
         rcptLineNo: Integer;
         assignLineNo: Integer;
-        assigned: Integer;
+        i: Integer;
+        metodoUp: Text;
+        totalWeight: Decimal;
+        qtyToAssign: Decimal;
+        asignadoAcum: Decimal;
         postedNo: Code[20];
     begin
         if chargeVendorNo = '' then
@@ -462,9 +468,9 @@ codeunit 50230 "Adelante PO Actions"
         ChargeLine.Validate("Direct Unit Cost", chargeAmount);
         ChargeLine.Modify(true);
 
-        // 3) Asignar el cargo a cada línea de recepción indicada (Applies-to = Receipt).
-        assignLineNo := 0;
-        assigned := 0;
+        // 3) Recolectar las líneas de recepción válidas y su "peso" según el método.
+        metodoUp := UpperCase(metodo);
+        totalWeight := 0;
         foreach JTok in JArr do begin
             JObj := JTok.AsObject();
             docNo := '';
@@ -474,28 +480,53 @@ codeunit 50230 "Adelante PO Actions"
             if JObj.Get('lineNo', v) then
                 rcptLineNo := v.AsValue().AsInteger();
             if (docNo <> '') and (rcptLineNo <> 0) and PurchRcptLine.Get(docNo, rcptLineNo) then begin
-                assignLineNo += 10000;
-                ItemChargeAssgnt.Init();
-                ItemChargeAssgnt."Document Type" := ChargeLine."Document Type";
-                ItemChargeAssgnt."Document No." := ChargeLine."Document No.";
-                ItemChargeAssgnt."Document Line No." := ChargeLine."Line No.";
-                ItemChargeAssgnt."Line No." := assignLineNo;
-                ItemChargeAssgnt."Item Charge No." := ChargeLine."No.";
-                ItemChargeAssgnt."Applies-to Doc. Type" := ItemChargeAssgnt."Applies-to Doc. Type"::Receipt;
-                ItemChargeAssgnt."Applies-to Doc. No." := PurchRcptLine."Document No.";
-                ItemChargeAssgnt."Applies-to Doc. Line No." := PurchRcptLine."Line No.";
-                ItemChargeAssgnt."Item No." := PurchRcptLine."No.";
-                ItemChargeAssgnt.Description := PurchRcptLine.Description;
-                ItemChargeAssgnt."Unit Cost" := ChargeLine."Direct Unit Cost";
-                ItemChargeAssgnt.Insert(true);
-                assigned += 1;
+                docNos.Add(docNo);
+                lineNos.Add(rcptLineNo);
+                weights.Add(PesoReparto(metodoUp, PurchRcptLine));
             end;
         end;
-        if assigned = 0 then
+        if docNos.Count = 0 then
             Error('No se encontró ninguna línea de recepción válida para asignar el cargo.');
 
-        // 4) Distribuir el cargo con el método indicado (default por importe).
-        ItemChargeMgt.AssignItemCharges(ChargeLine, ChargeLine.Quantity, ChargeLine."Line Amount", MenuTextForMethod(metodo));
+        for i := 1 to weights.Count do
+            totalWeight += weights.Get(i);
+        // Sin base para el método (ej. sin peso/volumen cargados) -> partes iguales.
+        if totalWeight <= 0 then begin
+            for i := 1 to weights.Count do
+                weights.Set(i, 1);
+            totalWeight := weights.Count;
+        end;
+
+        // 4) Insertar la asignación distribuyendo la cantidad del cargo (=1) por peso, y
+        //    seteando Qty. to Assign a mano para que sume exacto y quede totalmente asignado
+        //    (AssignItemCharges no reparte sobre filas apuntadas a recepciones a mano).
+        assignLineNo := 0;
+        asignadoAcum := 0;
+        for i := 1 to docNos.Count do begin
+            PurchRcptLine.Get(docNos.Get(i), lineNos.Get(i));
+            if i < docNos.Count then
+                qtyToAssign := Round(weights.Get(i) / totalWeight, 0.00001)
+            else
+                qtyToAssign := 1 - asignadoAcum; // el último toma el remanente exacto
+            asignadoAcum += qtyToAssign;
+
+            assignLineNo += 10000;
+            ItemChargeAssgnt.Init();
+            ItemChargeAssgnt."Document Type" := ChargeLine."Document Type";
+            ItemChargeAssgnt."Document No." := ChargeLine."Document No.";
+            ItemChargeAssgnt."Document Line No." := ChargeLine."Line No.";
+            ItemChargeAssgnt."Line No." := assignLineNo;
+            ItemChargeAssgnt."Item Charge No." := ChargeLine."No.";
+            ItemChargeAssgnt."Applies-to Doc. Type" := ItemChargeAssgnt."Applies-to Doc. Type"::Receipt;
+            ItemChargeAssgnt."Applies-to Doc. No." := PurchRcptLine."Document No.";
+            ItemChargeAssgnt."Applies-to Doc. Line No." := PurchRcptLine."Line No.";
+            ItemChargeAssgnt."Item No." := PurchRcptLine."No.";
+            ItemChargeAssgnt.Description := PurchRcptLine.Description;
+            ItemChargeAssgnt."Unit Cost" := ChargeLine."Direct Unit Cost";
+            ItemChargeAssgnt.Insert(true);
+            ItemChargeAssgnt.Validate("Qty. to Assign", qtyToAssign);
+            ItemChargeAssgnt.Modify(true);
+        end;
 
         // 5) Recibir + Facturar el cargo y registrar.
         ChargeLine.Find();
@@ -513,6 +544,21 @@ codeunit 50230 "Adelante PO Actions"
         if postedNo = '' then
             postedNo := vendorInvoiceNo;
         exit(postedNo);
+    end;
+
+    /// <summary>Peso de reparto de un cargo sobre una línea de recepción, según el método.</summary>
+    local procedure PesoReparto(metodoUp: Text; PurchRcptLine: Record "Purch. Rcpt. Line"): Decimal
+    begin
+        case metodoUp of
+            'EQUALLY':
+                exit(1);
+            'WEIGHT':
+                exit(PurchRcptLine.Quantity * PurchRcptLine."Gross Weight");
+            'VOLUME':
+                exit(PurchRcptLine.Quantity * PurchRcptLine."Unit Volume");
+            else
+                exit(PurchRcptLine.Quantity * PurchRcptLine."Direct Unit Cost"); // por importe (default)
+        end;
     end;
 
     local procedure GetOrder(var PurchHeader: Record "Purchase Header"; orderNo: Code[20])
