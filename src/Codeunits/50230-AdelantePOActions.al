@@ -391,6 +391,118 @@ codeunit 50230 "Adelante PO Actions"
         end;
     end;
 
+    /// <summary>
+    /// Registra un cargo de producto (flete de un tercero) sobre líneas de recepciones YA
+    /// registradas. Crea un pedido al proveedor del cargo con una única línea "Cargo (Prod.)",
+    /// asigna ese cargo a las líneas de recepción indicadas (Applies-to = Receipt), reparte con
+    /// el método dado (Amount por defecto) y registra la factura. Devuelve el N.º de factura.
+    /// receiptLinesJson = [{"documentNo":"CR-000003","lineNo":10000}, ...].
+    /// NOTA: es distinto del cargo del propio pedido (que asigna a líneas del mismo pedido).
+    /// </summary>
+    procedure PostChargeOnReceipts(chargeVendorNo: Code[20]; itemChargeNo: Code[20]; chargeAmount: Decimal; vendorInvoiceNo: Code[35]; metodo: Text; receiptLinesJson: Text): Text
+    var
+        PurchHeader: Record "Purchase Header";
+        ChargeLine: Record "Purchase Line";
+        PurchRcptLine: Record "Purch. Rcpt. Line";
+        ItemChargeAssgnt: Record "Item Charge Assignment (Purch)";
+        ItemChargeMgt: Codeunit "Item Charge Assgnt. (Purch.)";
+        PurchPost: Codeunit "Purch.-Post";
+        JArr: JsonArray;
+        JTok: JsonToken;
+        JObj: JsonObject;
+        v: JsonToken;
+        docNo: Code[20];
+        rcptLineNo: Integer;
+        assignLineNo: Integer;
+        assigned: Integer;
+        postedNo: Code[20];
+    begin
+        if chargeVendorNo = '' then
+            Error('Falta el proveedor del cargo.');
+        if itemChargeNo = '' then
+            Error('Falta el cargo de producto (Item Charge).');
+        if vendorInvoiceNo = '' then
+            Error('Falta el N.º de factura del proveedor.');
+        if chargeAmount <= 0 then
+            Error('El importe del cargo debe ser mayor a cero.');
+        if not JArr.ReadFrom(receiptLinesJson) then
+            Error('No se pudieron leer las líneas de recepción (JSON inválido).');
+
+        // 1) Pedido al proveedor del cargo.
+        PurchHeader.Init();
+        PurchHeader."Document Type" := PurchHeader."Document Type"::Order;
+        PurchHeader."No." := '';
+        PurchHeader.Insert(true);
+        PurchHeader.Validate("Buy-from Vendor No.", chargeVendorNo);
+        PurchHeader.Validate("Vendor Invoice No.", vendorInvoiceNo);
+        PurchHeader."Posting Date" := Today();
+        PurchHeader.Modify(true);
+
+        // 2) Única línea de cargo (Charge (Item)).
+        ChargeLine.Init();
+        ChargeLine."Document Type" := PurchHeader."Document Type";
+        ChargeLine."Document No." := PurchHeader."No.";
+        ChargeLine."Line No." := 10000;
+        ChargeLine.Insert(true);
+        ChargeLine.Validate(Type, ChargeLine.Type::"Charge (Item)");
+        ChargeLine.Validate("No.", itemChargeNo);
+        ChargeLine.Validate(Quantity, 1);
+        ChargeLine.Validate("Direct Unit Cost", chargeAmount);
+        ChargeLine.Modify(true);
+
+        // 3) Asignar el cargo a cada línea de recepción indicada (Applies-to = Receipt).
+        assignLineNo := 0;
+        assigned := 0;
+        foreach JTok in JArr do begin
+            JObj := JTok.AsObject();
+            docNo := '';
+            if JObj.Get('documentNo', v) then
+                docNo := CopyStr(v.AsValue().AsText(), 1, MaxStrLen(docNo));
+            rcptLineNo := 0;
+            if JObj.Get('lineNo', v) then
+                rcptLineNo := v.AsValue().AsInteger();
+            if (docNo <> '') and (rcptLineNo <> 0) and PurchRcptLine.Get(docNo, rcptLineNo) then begin
+                assignLineNo += 10000;
+                ItemChargeAssgnt.Init();
+                ItemChargeAssgnt."Document Type" := ChargeLine."Document Type";
+                ItemChargeAssgnt."Document No." := ChargeLine."Document No.";
+                ItemChargeAssgnt."Document Line No." := ChargeLine."Line No.";
+                ItemChargeAssgnt."Line No." := assignLineNo;
+                ItemChargeAssgnt."Item Charge No." := ChargeLine."No.";
+                ItemChargeAssgnt."Applies-to Doc. Type" := ItemChargeAssgnt."Applies-to Doc. Type"::Receipt;
+                ItemChargeAssgnt."Applies-to Doc. No." := PurchRcptLine."Document No.";
+                ItemChargeAssgnt."Applies-to Doc. Line No." := PurchRcptLine."Line No.";
+                ItemChargeAssgnt."Item No." := PurchRcptLine."No.";
+                ItemChargeAssgnt.Description := PurchRcptLine.Description;
+                ItemChargeAssgnt."Unit Cost" := ChargeLine."Direct Unit Cost";
+                ItemChargeAssgnt.Insert(true);
+                assigned += 1;
+            end;
+        end;
+        if assigned = 0 then
+            Error('No se encontró ninguna línea de recepción válida para asignar el cargo.');
+
+        // 4) Distribuir el cargo con el método indicado (default por importe).
+        ItemChargeMgt.AssignItemCharges(ChargeLine, ChargeLine.Quantity, ChargeLine."Line Amount", MenuTextForMethod(metodo));
+
+        // 5) Recibir + Facturar el cargo y registrar.
+        ChargeLine.Find();
+        ChargeLine.Validate("Qty. to Receive", ChargeLine.Quantity);
+        ChargeLine.Validate("Qty. to Invoice", ChargeLine.Quantity);
+        ChargeLine.Modify(true);
+
+        PurchHeader.Get(PurchHeader."Document Type", PurchHeader."No.");
+        PurchHeader.Receive := true;
+        PurchHeader.Invoice := true;
+        PurchHeader.Modify(true);
+
+        PurchPost.Run(PurchHeader);
+        postedNo := PurchHeader."Last Posting No.";
+        if postedNo = '' then
+            postedNo := vendorInvoiceNo;
+        exit(postedNo);
+    end;
+
     local procedure GetOrder(var PurchHeader: Record "Purchase Header"; orderNo: Code[20])
     begin
         PurchHeader.Reset();

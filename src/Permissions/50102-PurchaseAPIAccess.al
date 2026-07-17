@@ -16,6 +16,7 @@ permissionset 50102 "GJW Purch API"
         page "GJW Post Purchase Order API" = X,
         page "Adelante Last Purch Price API" = X,
         page "Adelante Item Charge API" = X,
+        page "Adelante Posted Rcpt Line API" = X,
 
         // Acceso a los codeunits de posting / preview
         codeunit "GJW Purchase Post Processor" = X,
@@ -25,6 +26,7 @@ permissionset 50102 "GJW Purch API"
         tabledata "Purchase Header" = RIMD,
         tabledata "Purchase Line" = RIMD,
         tabledata "Purch. Rcpt. Header" = R,
+        tabledata "Purch. Rcpt. Line" = R,
         tabledata "Purch. Inv. Header" = R,
 
         // Lectura de ledgers para la vista previa (Preview Posting)
