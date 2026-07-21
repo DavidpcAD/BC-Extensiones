@@ -561,6 +561,62 @@ codeunit 50230 "Adelante PO Actions"
         end;
     end;
 
+    /// <summary>
+    /// Agrega (o actualiza) una línea de Cargo (Prod.) sobre un pedido ABIERTO. Se expone
+    /// porque la API estándar purchaseOrderLines no crea confiablemente las líneas de tipo
+    /// "Charge (Item)". Idempotente por itemChargeNo: si ya hay una línea de ese cargo en el
+    /// pedido, actualiza su cantidad/precio en vez de duplicar. Devuelve el N.º de línea.
+    /// El reparto del cargo se hace solo al lanzar/registrar (AsignarCargosProducto).
+    /// </summary>
+    procedure AddChargeLine(orderNo: Code[20]; itemChargeNo: Code[20]; description: Text[100]; quantity: Decimal; directUnitCost: Decimal): Text
+    var
+        PurchHeader: Record "Purchase Header";
+        PurchLine: Record "Purchase Line";
+        lastLineNo: Integer;
+    begin
+        GetOrder(PurchHeader, orderNo);
+        if itemChargeNo = '' then
+            Error('Falta el cargo de producto (Item Charge).');
+        if quantity <= 0 then
+            Error('La cantidad del cargo debe ser mayor a cero.');
+
+        // Idempotencia: si ya existe una línea de ese cargo, actualizarla.
+        PurchLine.SetRange("Document Type", PurchHeader."Document Type");
+        PurchLine.SetRange("Document No.", PurchHeader."No.");
+        PurchLine.SetRange(Type, PurchLine.Type::"Charge (Item)");
+        PurchLine.SetRange("No.", itemChargeNo);
+        if PurchLine.FindFirst() then begin
+            PurchLine.Validate(Quantity, quantity);
+            PurchLine.Validate("Direct Unit Cost", directUnitCost);
+            if description <> '' then
+                PurchLine.Validate(Description, CopyStr(description, 1, MaxStrLen(PurchLine.Description)));
+            PurchLine.Modify(true);
+            exit(Format(PurchLine."Line No."));
+        end;
+
+        // Siguiente N.º de línea.
+        PurchLine.Reset();
+        PurchLine.SetRange("Document Type", PurchHeader."Document Type");
+        PurchLine.SetRange("Document No.", PurchHeader."No.");
+        if PurchLine.FindLast() then
+            lastLineNo := PurchLine."Line No.";
+        lastLineNo += 10000;
+
+        PurchLine.Init();
+        PurchLine."Document Type" := PurchHeader."Document Type";
+        PurchLine."Document No." := PurchHeader."No.";
+        PurchLine."Line No." := lastLineNo;
+        PurchLine.Insert(true);
+        PurchLine.Validate(Type, PurchLine.Type::"Charge (Item)");
+        PurchLine.Validate("No.", itemChargeNo);
+        if description <> '' then
+            PurchLine.Validate(Description, CopyStr(description, 1, MaxStrLen(PurchLine.Description)));
+        PurchLine.Validate(Quantity, quantity);
+        PurchLine.Validate("Direct Unit Cost", directUnitCost);
+        PurchLine.Modify(true);
+        exit(Format(lastLineNo));
+    end;
+
     local procedure GetOrder(var PurchHeader: Record "Purchase Header"; orderNo: Code[20])
     begin
         PurchHeader.Reset();
