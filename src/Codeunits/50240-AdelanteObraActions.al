@@ -129,7 +129,39 @@ codeunit 50240 "Adelante Obra Actions"
         JobMgmt.CreateJob(Works, versionCode);
         JobMgmt.UpsertJobTask(Works, versionCode);
 
+        // CreateJob hereda el CC al Job pero no el AC. Copiamos TODAS las Default Dimensions
+        // de la Obra (GomJob Works) al Job (mismo N°), así el Proyecto queda con AC + CC igual
+        // que la Obra. Idempotente y sobre Default Dimension (no toca el Work).
+        CopyObraDimsToJob(obraNo);
+
         exit('OK');
+    end;
+
+    /// <summary>Copia las Default Dimensions de la Obra (GomJob Works) al Job del mismo N°.</summary>
+    local procedure CopyObraDimsToJob(obraNo: Code[20])
+    var
+        Job: Record Job;
+        ObraDim: Record "Default Dimension";
+        JobDim: Record "Default Dimension";
+    begin
+        if not Job.Get(obraNo) then
+            exit; // el Job normalmente nace con el mismo N° que la obra; si no, no hay a dónde copiar
+        ObraDim.SetRange("Table ID", Database::"GomJob Works");
+        ObraDim.SetRange("No.", obraNo);
+        if ObraDim.FindSet() then
+            repeat
+                if JobDim.Get(Database::Job, obraNo, ObraDim."Dimension Code") then begin
+                    JobDim.Validate("Dimension Value Code", ObraDim."Dimension Value Code");
+                    JobDim.Modify(true);
+                end else begin
+                    JobDim.Init();
+                    JobDim.Validate("Table ID", Database::Job);
+                    JobDim.Validate("No.", obraNo);
+                    JobDim.Validate("Dimension Code", ObraDim."Dimension Code");
+                    JobDim.Validate("Dimension Value Code", ObraDim."Dimension Value Code");
+                    JobDim.Insert(true);
+                end;
+            until ObraDim.Next() = 0;
     end;
 
     /// <summary>
