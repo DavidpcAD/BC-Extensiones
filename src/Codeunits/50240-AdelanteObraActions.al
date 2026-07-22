@@ -241,14 +241,16 @@ codeunit 50240 "Adelante Obra Actions"
 
     /// <summary>
     /// Da de alta (o marca como revertida) la actividad de la obra en la obra Postventa dada
-    /// (pvNo, ya resuelta por ResolvePostventaNo). La actividad es una línea de GomJob Works
-    /// Line con Task Type = Posting (se muestra como "Auxiliar"), Task No. = N° de la obra
-    /// (idempotencia). blocked=true crea/reactiva; blocked=false marca Revertida (no borra).
+    /// (pvNo, ya resuelta por ResolvePostventaNo). La actividad debe quedar en AMBAS secciones
+    /// de la obra Postventa: Líneas venta (Line Type = Sales) y Coste directo (Line Type = Cost)
+    /// —es el mismo estado final que se logra a mano creando la línea en venta y luego con el
+    /// botón "Traer líneas de obra"—. Cada línea es una GomJob Works Line con Task Type = Posting
+    /// (se muestra como "Auxiliar") y Task No. = N° de la obra (idempotencia por PK).
+    /// blocked=true crea/reactiva; blocked=false marca Revertida (no borra).
     /// </summary>
     local procedure UpsertPostventaActivity(obraNo: Code[20]; pvNo: Code[20]; description: Text[100]; blocked: Boolean)
     var
         PVWorks: Record "GomJob Works";
-        WorksLine: Record "GomJob Works Line";
         versionCode: Code[20];
     begin
         if not PVWorks.Get(pvNo) then begin
@@ -258,15 +260,29 @@ codeunit 50240 "Adelante Obra Actions"
         end;
         versionCode := PVWorks.GetLatestVersionCode();
 
+        UpsertPostventaLine(pvNo, versionCode, Enum::"GomJob Works Line Type"::Sales, obraNo, description, blocked);
+        UpsertPostventaLine(pvNo, versionCode, Enum::"GomJob Works Line Type"::Cost, obraNo, description, blocked);
+    end;
+
+    /// <summary>
+    /// Crea/reactiva (blocked=true) o marca Revertida (blocked=false) la línea auxiliar de la obra
+    /// (Task No. = obraNo, Task Type = Posting/"Auxiliar", Qty = 1) en la obra Postventa, para el
+    /// Line Type indicado (Sales = Líneas venta, Cost = Coste directo). Idempotente por la PK de
+    /// GomJob Works Line (Works No., Version Code, Line Type, Task No.).
+    /// </summary>
+    local procedure UpsertPostventaLine(pvNo: Code[20]; versionCode: Code[20]; lineType: Enum "GomJob Works Line Type"; obraNo: Code[20]; description: Text[100]; blocked: Boolean)
+    var
+        WorksLine: Record "GomJob Works Line";
+    begin
         if blocked then begin
-            if WorksLine.Get(pvNo, versionCode, WorksLine."Line Type"::Cost, obraNo) then begin
+            if WorksLine.Get(pvNo, versionCode, lineType, obraNo) then begin
                 WorksLine."Adelante Revertida" := false;
                 WorksLine.Modify(true);
             end else begin
                 WorksLine.Init();
                 WorksLine."Works No." := pvNo;
                 WorksLine."Version Code" := versionCode;
-                WorksLine."Line Type" := WorksLine."Line Type"::Cost;
+                WorksLine."Line Type" := lineType;
                 WorksLine."Task No." := obraNo;
                 WorksLine."Job No." := pvNo;
                 WorksLine."Task Type" := WorksLine."Task Type"::Posting; // "Auxiliar" en la UI de GomJob
@@ -276,7 +292,7 @@ codeunit 50240 "Adelante Obra Actions"
                 WorksLine.Insert(true);
             end;
         end else begin
-            if WorksLine.Get(pvNo, versionCode, WorksLine."Line Type"::Cost, obraNo) then begin
+            if WorksLine.Get(pvNo, versionCode, lineType, obraNo) then begin
                 WorksLine."Adelante Revertida" := true;
                 WorksLine."Adelante Fecha Reversa" := Today();
                 WorksLine.Modify(true);
