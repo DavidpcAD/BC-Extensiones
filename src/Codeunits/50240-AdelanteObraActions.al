@@ -73,8 +73,14 @@ codeunit 50240 "Adelante Obra Actions"
                     Works."Global Dimension 2 Code" := areaCosteo;
                 Works.Modify(true);
             end;
-        end else
-            SetObraDimension(obraNo, DimAreaCosto(), areaCosteo);
+        end;
+
+        // AC como Default Dimension SIEMPRE. Sobre la tabla custom GomJob Works,
+        // ValidateShortcutDimCode NO crea la fila en Default Dimension (solo setea el campo
+        // global denormalizado), así que el AC no quedaba como dimensión predeterminada.
+        // SetObraDimension es idempotente (Get->Modify / Insert) y opera sobre Default
+        // Dimension —no sobre el Work—, así que no reintroduce el race de concurrencia.
+        SetObraDimension(obraNo, DimAreaCosto(), areaCosteo);
 
         // 4) CC = dimensión normal → Default Dimension (tabla aparte, no toca el Work).
         SetObraDimension(obraNo, DimCentroCosto(), centroCosto);
