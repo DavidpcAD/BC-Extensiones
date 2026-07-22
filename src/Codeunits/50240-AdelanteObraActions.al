@@ -251,6 +251,7 @@ codeunit 50240 "Adelante Obra Actions"
     local procedure UpsertPostventaActivity(obraNo: Code[20]; pvNo: Code[20]; description: Text[100]; blocked: Boolean)
     var
         PVWorks: Record "GomJob Works";
+        JobMgmt: Codeunit "GomJob Job Management";
         versionCode: Code[20];
     begin
         if not PVWorks.Get(pvNo) then begin
@@ -262,6 +263,11 @@ codeunit 50240 "Adelante Obra Actions"
 
         UpsertPostventaLine(pvNo, versionCode, Enum::"GomJob Works Line Type"::Sales, obraNo, description, blocked);
         UpsertPostventaLine(pvNo, versionCode, Enum::"GomJob Works Line Type"::Cost, obraNo, description, blocked);
+
+        // Sincronizar las tareas del Job de la Postventa a partir de sus líneas de obra
+        // (mismo proceso que el botón "Actualizar tareas proyecto"), para que la actividad
+        // auxiliar recién creada aparezca también como Tarea del proyecto (Job Task).
+        JobMgmt.UpsertJobTask(PVWorks, versionCode);
     end;
 
     /// <summary>
