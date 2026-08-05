@@ -137,6 +137,23 @@ codeunit 50240 "Adelante Obra Actions"
         exit('OK');
     end;
 
+    /// <summary>
+    /// Ejecuta "Actualizar tareas proyecto" (Obra → Proyecto/Job): sincroniza las Job Task del
+    /// proyecto a partir de las líneas de la obra (venta/coste/indirecto), usando la última
+    /// versión. Es el mismo proceso del botón homónimo de la GomJob Works Card. Se usa tras
+    /// subir el presupuesto por API para que el Job deje de quedar en 0. Devuelve 'OK'.
+    /// </summary>
+    procedure UpdateProjectTasks(obraNo: Code[20]): Text
+    var
+        Works: Record "GomJob Works";
+        JobMgmt: Codeunit "GomJob Job Management";
+    begin
+        if not Works.Get(obraNo) then
+            Error('La obra %1 no existe en BC.', obraNo);
+        JobMgmt.UpsertJobTask(Works, Works.GetLatestVersionCode());
+        exit('OK');
+    end;
+
     /// <summary>Copia las Default Dimensions de la Obra (GomJob Works) al Job del mismo N°.</summary>
     local procedure CopyObraDimsToJob(obraNo: Code[20])
     var

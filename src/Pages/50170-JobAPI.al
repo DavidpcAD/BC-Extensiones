@@ -31,6 +31,7 @@ page 50170 "GJW Job API"
                 field(creationDate; Rec."Creation Date") { Caption = 'Creation Date'; }
                 field(startingDate; Rec."Starting Date") { Caption = 'Starting Date'; }
                 field(endingDate; Rec."Ending Date") { Caption = 'Ending Date'; }
+                field(areaProrrateada; Rec."Area Prorrateada") { Caption = 'Area Prorrateada'; } // escribible (PATCH)
                 field(systemModifiedAt; Rec.SystemModifiedAt) { Caption = 'System Modified At'; }
             }
         }
