@@ -48,5 +48,11 @@ tableextension 50141 "GJW Works Ext" extends "GomJob Works"
             Caption = 'En Ejecución';
             DataClassification = CustomerContent;
         }
+
+        field(50300; "Area Prorrateada"; Decimal)
+        {
+            Caption = 'Area Prorrateada';
+            DataClassification = CustomerContent;
+        }
     }
 }

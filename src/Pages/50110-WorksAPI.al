@@ -29,6 +29,7 @@ page 50110 "GJW Works API"
                 field(idEncargado; Rec."ID Encargado") { Caption = 'ID Encargado'; ObsoleteState = Pending; }
                 field(idEncargadoText; Rec."ID Encargado Text") { Caption = 'ID Encargado'; }
                 field(filterVersionCode; Rec."Filter Version Code") { Caption = 'Filter Version Code'; }
+                field(areaProrrateada; Rec."Area Prorrateada") { Caption = 'Area Prorrateada'; } // escribible (PATCH)
 
                 // Importes (los mismos que ves en el Factbox)
                 field(salesLineAmount; Rec."Sales Line Amount") { Caption = 'Sales Line Amount'; Editable = false; }
