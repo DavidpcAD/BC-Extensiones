@@ -22,6 +22,12 @@ pageextension 50149 "GJW Works Budget Lock Ext" extends "GomJob Works Card"
                 Caption = 'En Ejecución';
                 ToolTip = 'Indica si la obra está actualmente en construcción (activa) o ya fue terminada.';
             }
+            field("Area Prorrateada"; Rec."Area Prorrateada")
+            {
+                ApplicationArea = All;
+                Caption = 'Area Prorrateada';
+                ToolTip = 'Área prorrateada (m²) de la obra.';
+            }
         }
     }
 
