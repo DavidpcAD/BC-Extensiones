@@ -858,6 +858,108 @@ codeunit 50230 "Adelante PO Actions"
         exit(StrSubstNo(' Omitidas %1:%2', skippedCount, skippedMsg));
     end;
 
+    /// <summary>
+    /// Setea, por línea de un pedido de compra, los campos que la API estándar purchaseOrderLines
+    /// no expone: Job No. + Job Task No. (+ Job Line Type) para material de Consumo inmediato, y
+    /// Location Code para material de Stock. La app crea las líneas con la API estándar y luego
+    /// llama aquí, ANTES del Release. Identifica cada línea por "Line No." (el sequence estándar).
+    ///
+    /// assignmentsJson = [
+    ///   { "lineNo":10000, "jobNo":"VN-B.24", "jobTaskNo":"1.2", "jobLineType":"Budget", "locationCode":"" },
+    ///   { "lineNo":20000, "jobNo":"", "jobTaskNo":"", "locationCode":"ALM-GRAL" }
+    /// ]
+    ///  · jobLineType (opcional): Budget (default) | Billable | Both | None. Solo aplica si hay jobNo.
+    ///  · Usa Validate en orden Job No. -> Job Task No. -> Job Line Type (dispara la lógica de BC:
+    ///    proyecto abierto, tarea de posteo del proyecto, y arma las Job Planning Lines).
+    ///  · Idempotente y NO tumba por línea: acumula el motivo real de BC en "errors" y sigue
+    ///    (mismo criterio que AddChargeLine), para que la app avise sin abortar el lanzamiento.
+    /// Devuelve JSON: { "updated": N, "errors": "..." }.
+    /// </summary>
+    procedure SetLineJob(orderNo: Code[20]; assignmentsJson: Text): Text
+    var
+        PurchHeader: Record "Purchase Header";
+        PurchLine: Record "Purchase Line";
+        Arr: JsonArray;
+        Tok: JsonToken;
+        Obj: JsonObject;
+        ResultObj: JsonObject;
+        v: JsonToken;
+        lineNo: Integer;
+        jobNo: Code[20];
+        jobTaskNo: Code[20];
+        jobLineTypeTxt: Text;
+        locCode: Code[10];
+        updated: Integer;
+        errors: Text;
+        resultTxt: Text;
+    begin
+        GetOrder(PurchHeader, orderNo);
+        if not Arr.ReadFrom(assignmentsJson) then
+            Error('assignmentsJson inválido (se espera un arreglo JSON).');
+
+        foreach Tok in Arr do begin
+            if not Tok.IsObject() then begin
+                errors += 'Una entrada no es un objeto JSON. ';
+            end else begin
+                Obj := Tok.AsObject();
+                lineNo := 0;
+                if Obj.Get('lineNo', v) then
+                    if not v.AsValue().IsNull() then
+                        lineNo := v.AsValue().AsInteger();
+                jobNo := CopyStr(GetJsonText(Obj, 'jobNo'), 1, MaxStrLen(jobNo));
+                jobTaskNo := CopyStr(GetJsonText(Obj, 'jobTaskNo'), 1, MaxStrLen(jobTaskNo));
+                jobLineTypeTxt := GetJsonText(Obj, 'jobLineType');
+                locCode := CopyStr(GetJsonText(Obj, 'locationCode'), 1, MaxStrLen(locCode));
+
+                if lineNo = 0 then
+                    errors += 'Falta "lineNo" en una entrada. '
+                else if not PurchLine.Get(PurchLine."Document Type"::Order, orderNo, lineNo) then
+                    errors += StrSubstNo('Línea %1 no encontrada. ', lineNo)
+                else if TrySetLine(orderNo, lineNo, jobNo, jobTaskNo, jobLineTypeTxt, locCode) then
+                    updated += 1
+                else
+                    errors += StrSubstNo('Línea %1: %2 ', lineNo, GetLastErrorText());
+            end;
+        end;
+
+        ResultObj.Add('updated', updated);
+        ResultObj.Add('errors', errors);
+        ResultObj.WriteTo(resultTxt);
+        exit(resultTxt);
+    end;
+
+    /// <summary>Aplica los campos de una línea dentro de un TryFunction, para que un fallo de
+    /// una línea (proyecto cerrado, tarea inválida, etc.) no tumbe el resto ni el lanzamiento.</summary>
+    [TryFunction]
+    local procedure TrySetLine(orderNo: Code[20]; lineNo: Integer; jobNo: Code[20]; jobTaskNo: Code[20]; jobLineTypeTxt: Text; locCode: Code[10])
+    var
+        PurchLine: Record "Purchase Line";
+    begin
+        PurchLine.Get(PurchLine."Document Type"::Order, orderNo, lineNo);
+
+        if jobNo <> '' then begin
+            if PurchLine.Type <> PurchLine.Type::Item then
+                Error('la línea no es de tipo Item; el proyecto solo aplica a artículos.');
+            PurchLine.Validate("Job No.", jobNo);              // 1) proyecto primero
+            PurchLine.Validate("Job Task No.", jobTaskNo);     // 2) luego la tarea
+            case UpperCase(DelChr(jobLineTypeTxt, '<>', ' ')) of // 3) tipo de línea de proyecto
+                'BILLABLE':
+                    PurchLine.Validate("Job Line Type", PurchLine."Job Line Type"::Billable);
+                'BOTH', 'BOTHBUDGETANDBILLABLE':
+                    PurchLine.Validate("Job Line Type", PurchLine."Job Line Type"::"Both Budget and Billable");
+                'NONE':
+                    PurchLine.Validate("Job Line Type", PurchLine."Job Line Type"::" ");
+                else // '' o 'BUDGET' -> default Budget (material consumido en obra)
+                    PurchLine.Validate("Job Line Type", PurchLine."Job Line Type"::Budget);
+            end;
+        end;
+
+        if locCode <> '' then
+            PurchLine.Validate("Location Code", locCode);
+
+        PurchLine.Modify(true);
+    end;
+
     local procedure GetOrder(var PurchHeader: Record "Purchase Header"; orderNo: Code[20])
     begin
         PurchHeader.Reset();
