@@ -617,6 +617,247 @@ codeunit 50230 "Adelante PO Actions"
         exit(Format(lastLineNo));
     end;
 
+    /// <summary>
+    /// Reemplaza TODAS las líneas de un pedido de compra ABIERTO con las que vienen en
+    /// linesJson, en una sola transacción (todo o nada). Se usa cuando la app corrige un
+    /// pedido reabierto (ReopenOrder → editar → ReplaceOrderLines) para que Bodega y
+    /// Contabilidad reciban/facturen contra las cantidades y el costo correctos, no los viejos.
+    ///
+    /// linesJson = { "lines": [
+    ///   { "type":"Item", "itemNo":"M01-0147", "variantCode":"", "locationCode":"ALM-GRAL",
+    ///     "quantity":6, "directUnitCost":1100, "lineDiscountPct":0, "jobNo":"VB-5.01", "taskNo":"1000" },
+    ///   { "type":"Charge", "itemChargeNo":"FLETE", "description":"FLETE / TRANSPORTE",
+    ///     "quantity":1, "directUnitCost":45000, "chargeMethod":"Amount" }
+    /// ] }
+    ///
+    /// Guardas server-side (no dependen de la UI de la app):
+    ///  · El pedido debe estar ABIERTO. Si está Lanzado u otro estado -> Error claro, sin reemplazo.
+    ///  · Falla si hay recepciones registradas o alguna línea con cantidad ya recibida.
+    ///  · Todo o nada: cualquier línea inválida lanza Error y revierte TODO (no queda a medias).
+    ///  · El "Direct Unit Cost" del JSON se valida al final, para que gane sobre el costo del maestro.
+    /// El reparto del cargo (Item Charge) se hace al lanzar/registrar (AsignarCargosProducto),
+    /// igual que en el resto del flujo; aquí solo se (re)crea la línea del cargo. "chargeMethod"
+    /// se acepta pero se aplica en ese momento posterior. Las líneas con cantidad 0 o negativa se
+    /// omiten y se reportan. Devuelve un texto con creadas / eliminadas / omitidas.
+    /// </summary>
+    procedure ReplaceOrderLines(orderNo: Code[20]; linesJson: Text): Text
+    var
+        PurchHeader: Record "Purchase Header";
+        PurchLine: Record "Purchase Line";
+        PurchRcptLine: Record "Purch. Rcpt. Line";
+        RootObj: JsonObject;
+        LinesTok: JsonToken;
+        LinesArr: JsonArray;
+        JTok: JsonToken;
+        JObj: JsonObject;
+        v: JsonToken;
+        lineType: Text;
+        deletedCount: Integer;
+        itemCount: Integer;
+        chargeCount: Integer;
+        skippedCount: Integer;
+        skippedMsg: Text;
+        idx: Integer;
+        lastLineNo: Integer;
+    begin
+        GetOrder(PurchHeader, orderNo);
+
+        // Guard 1: el pedido debe estar ABIERTO (nunca reemplazar sobre un Lanzado).
+        if PurchHeader.Status <> PurchHeader.Status::Open then
+            Error('El pedido %1 debe estar Abierto para reescribir líneas. Estado actual: %2. Reábrelo primero (AdelantePO_ReopenOrder).',
+                orderNo, PurchHeader.Status);
+
+        // Guard 2: no debe tener recepciones registradas ni cantidades ya recibidas.
+        PurchRcptLine.SetRange("Order No.", orderNo);
+        if not PurchRcptLine.IsEmpty() then
+            Error('El pedido %1 tiene recepciones registradas. No se pueden reescribir sus líneas.', orderNo);
+
+        PurchLine.SetRange("Document Type", PurchLine."Document Type"::Order);
+        PurchLine.SetRange("Document No.", orderNo);
+        PurchLine.SetFilter("Quantity Received", '<>0');
+        if not PurchLine.IsEmpty() then
+            Error('El pedido %1 tiene líneas con cantidad ya recibida. No se pueden reescribir.', orderNo);
+
+        // Parseo del JSON: objeto con arreglo "lines".
+        if not RootObj.ReadFrom(linesJson) then
+            Error('JSON inválido en linesJson.');
+        if not RootObj.Get('lines', LinesTok) then
+            Error('Falta el arreglo "lines" en linesJson.');
+        if not LinesTok.IsArray() then
+            Error('"lines" debe ser un arreglo.');
+        LinesArr := LinesTok.AsArray();
+        if LinesArr.Count() = 0 then
+            Error('"lines" está vacío: no se reescribió nada. Este procedure reemplaza con líneas nuevas.');
+
+        // Borrar TODAS las líneas actuales (DeleteAll con trigger limpia asignaciones de cargo).
+        PurchLine.Reset();
+        PurchLine.SetRange("Document Type", PurchLine."Document Type"::Order);
+        PurchLine.SetRange("Document No.", orderNo);
+        deletedCount := PurchLine.Count();
+        PurchLine.DeleteAll(true);
+
+        // Crear las líneas nuevas. Cualquier fallo -> Error -> rollback total (todo o nada).
+        lastLineNo := 0;
+        idx := 0;
+        foreach JTok in LinesArr do begin
+            idx += 1;
+            if not JTok.IsObject() then
+                Error('Línea %1: se esperaba un objeto JSON.', idx);
+            JObj := JTok.AsObject();
+
+            lineType := '';
+            if JObj.Get('type', v) then
+                if not v.AsValue().IsNull() then
+                    lineType := UpperCase(v.AsValue().AsText());
+
+            lastLineNo += 10000;
+
+            case lineType of
+                'ITEM':
+                    if InsertItemLine(orderNo, lastLineNo, JObj, idx, skippedMsg) then
+                        itemCount += 1
+                    else
+                        skippedCount += 1;
+                'CHARGE':
+                    if InsertChargeLine(orderNo, lastLineNo, JObj, idx, skippedMsg) then
+                        chargeCount += 1
+                    else
+                        skippedCount += 1;
+                else
+                    Error('Línea %1: "type" desconocido (''%2''). Use "Item" o "Charge".', idx, lineType);
+            end;
+        end;
+
+        exit(StrSubstNo('Pedido %1 reescrito. Eliminadas %2 línea(s) previa(s); creadas %3 (%4 ítem, %5 cargo).%6',
+            orderNo, deletedCount, itemCount + chargeCount, itemCount, chargeCount,
+            SkippedText(skippedCount, skippedMsg)));
+    end;
+
+    /// <summary>Crea una línea de artículo. Devuelve false y reporta si se omite (cantidad 0 o negativa);
+    /// cualquier otro problema lanza Error para forzar el rollback total.</summary>
+    local procedure InsertItemLine(orderNo: Code[20]; lineNo: Integer; JObj: JsonObject; idx: Integer; var skippedMsg: Text): Boolean
+    var
+        PurchLine: Record "Purchase Line";
+        v: JsonToken;
+        itemNo: Code[20];
+        variantCode: Code[10];
+        locationCode: Code[10];
+        jobNo: Code[20];
+        taskNo: Code[20];
+        qty: Decimal;
+        directUnitCost: Decimal;
+        lineDiscPct: Decimal;
+        hasCost: Boolean;
+    begin
+        itemNo := CopyStr(GetJsonText(JObj, 'itemNo'), 1, MaxStrLen(itemNo));
+        if itemNo = '' then
+            Error('Línea %1 (Item): falta "itemNo".', idx);
+        qty := GetJsonDec(JObj, 'quantity');
+        if qty <= 0 then begin
+            skippedMsg += StrSubstNo(' [Línea %1 (Item %2): quantity<=0]', idx, itemNo);
+            exit(false);
+        end;
+
+        variantCode := CopyStr(GetJsonText(JObj, 'variantCode'), 1, MaxStrLen(variantCode));
+        locationCode := CopyStr(GetJsonText(JObj, 'locationCode'), 1, MaxStrLen(locationCode));
+        jobNo := CopyStr(GetJsonText(JObj, 'jobNo'), 1, MaxStrLen(jobNo));
+        taskNo := CopyStr(GetJsonText(JObj, 'taskNo'), 1, MaxStrLen(taskNo));
+        lineDiscPct := GetJsonDec(JObj, 'lineDiscountPct');
+        hasCost := JObj.Get('directUnitCost', v);
+        if hasCost then
+            if v.AsValue().IsNull() then hasCost := false else directUnitCost := v.AsValue().AsDecimal();
+
+        PurchLine.Init();
+        PurchLine."Document Type" := PurchLine."Document Type"::Order;
+        PurchLine."Document No." := orderNo;
+        PurchLine."Line No." := lineNo;
+        PurchLine.Insert(true);
+        PurchLine.Validate(Type, PurchLine.Type::Item);
+        PurchLine.Validate("No.", itemNo);
+        if variantCode <> '' then
+            PurchLine.Validate("Variant Code", variantCode);
+        if locationCode <> '' then
+            PurchLine.Validate("Location Code", locationCode);
+        PurchLine.Validate(Quantity, qty);
+        if jobNo <> '' then
+            PurchLine.Validate("Job No.", jobNo);
+        if taskNo <> '' then
+            PurchLine.Validate("Job Task No.", taskNo);
+        if lineDiscPct <> 0 then
+            PurchLine.Validate("Line Discount %", lineDiscPct);
+        if hasCost then
+            PurchLine.Validate("Direct Unit Cost", directUnitCost); // al final: el costo negociado gana sobre el del maestro
+        PurchLine.Modify(true);
+        exit(true);
+    end;
+
+    /// <summary>Crea una línea de Cargo (Item Charge). Mismo patrón fiable que AddChargeLine.</summary>
+    local procedure InsertChargeLine(orderNo: Code[20]; lineNo: Integer; JObj: JsonObject; idx: Integer; var skippedMsg: Text): Boolean
+    var
+        PurchLine: Record "Purchase Line";
+        v: JsonToken;
+        chargeNo: Code[20];
+        description: Text[100];
+        qty: Decimal;
+        directUnitCost: Decimal;
+        hasCost: Boolean;
+    begin
+        chargeNo := CopyStr(GetJsonText(JObj, 'itemChargeNo'), 1, MaxStrLen(chargeNo));
+        if chargeNo = '' then
+            Error('Línea %1 (Charge): falta "itemChargeNo".', idx);
+        qty := GetJsonDec(JObj, 'quantity');
+        if qty <= 0 then begin
+            skippedMsg += StrSubstNo(' [Línea %1 (Charge %2): quantity<=0]', idx, chargeNo);
+            exit(false);
+        end;
+        description := CopyStr(GetJsonText(JObj, 'description'), 1, MaxStrLen(description));
+        hasCost := JObj.Get('directUnitCost', v);
+        if hasCost then
+            if v.AsValue().IsNull() then hasCost := false else directUnitCost := v.AsValue().AsDecimal();
+
+        PurchLine.Init();
+        PurchLine."Document Type" := PurchLine."Document Type"::Order;
+        PurchLine."Document No." := orderNo;
+        PurchLine."Line No." := lineNo;
+        PurchLine.Insert(true);
+        PurchLine.Validate(Type, PurchLine.Type::"Charge (Item)");
+        PurchLine.Validate("No.", chargeNo);
+        if description <> '' then
+            PurchLine.Validate(Description, description);
+        PurchLine.Validate(Quantity, qty);
+        if hasCost then
+            PurchLine.Validate("Direct Unit Cost", directUnitCost);
+        PurchLine.Modify(true);
+        exit(true);
+    end;
+
+    local procedure GetJsonText(JObj: JsonObject; keyName: Text): Text
+    var
+        v: JsonToken;
+    begin
+        if JObj.Get(keyName, v) then
+            if not v.AsValue().IsNull() then
+                exit(v.AsValue().AsText());
+        exit('');
+    end;
+
+    local procedure GetJsonDec(JObj: JsonObject; keyName: Text): Decimal
+    var
+        v: JsonToken;
+    begin
+        if JObj.Get(keyName, v) then
+            if not v.AsValue().IsNull() then
+                exit(v.AsValue().AsDecimal());
+        exit(0);
+    end;
+
+    local procedure SkippedText(skippedCount: Integer; skippedMsg: Text): Text
+    begin
+        if skippedCount = 0 then
+            exit('');
+        exit(StrSubstNo(' Omitidas %1:%2', skippedCount, skippedMsg));
+    end;
+
     local procedure GetOrder(var PurchHeader: Record "Purchase Header"; orderNo: Code[20])
     begin
         PurchHeader.Reset();
