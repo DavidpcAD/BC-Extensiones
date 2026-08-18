@@ -44,6 +44,7 @@ permissionset 50100 "Adelante API RIMD"
         tabledata "General Ledger Setup" = R,
         tabledata "Inventory Posting Setup" = RIMD,
         tabledata "G/L Account" = R,
+        tabledata "Tenant Web Service" = RIMD,   // publicar AdelantePO/AdelanteObra desde la página 50241
 
 
 
@@ -85,6 +86,7 @@ permissionset 50100 "Adelante API RIMD"
         page "Adelante Postventa Setup" = X,
         page "Adelante Postventa Obras API" = X,
         page "GJW Post Job Journal API" = X,        //        page "GJW Job Journal Line API" = X,
+        page "Adelante WS Setup" = X,
 
 
         // CODEUNITS (Execute)
@@ -106,6 +108,8 @@ permissionset 50100 "Adelante API RIMD"
         codeunit "GJW Material Op Bulk Proc" = X,
         codeunit "GJW Item Journal Post Handler" = X, // ⭐ Automatización Warehouse Quantity
         codeunit "Adelante Obra Actions" = X,
+        codeunit "Adelante PO Actions" = X,
+        codeunit "Adelante PO WS Setup" = X,
         codeunit "GomJob Job Management" = X;
 
 }
