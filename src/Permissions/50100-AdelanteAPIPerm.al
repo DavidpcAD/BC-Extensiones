@@ -110,6 +110,7 @@ permissionset 50100 "Adelante API RIMD"
         codeunit "Adelante Obra Actions" = X,
         codeunit "Adelante PO Actions" = X,
         codeunit "Adelante PO WS Setup" = X,
+        codeunit "GJW Realizado Por Handler" = X,
         codeunit "GomJob Job Management" = X;
 
 }

@@ -52,6 +52,11 @@ page 50184 "GJW Post Job Journal API"
                     ApplicationArea = All;
                     Caption = 'Document No.';
                 }
+                field(realizadoPor; Rec."GJW Realizado Por")
+                {
+                    ApplicationArea = All;
+                    Caption = 'Realizado por';
+                }
                 field(projectNo; Rec."Project No.")
                 {
                     ApplicationArea = All;
@@ -214,6 +219,9 @@ page 50184 "GJW Post Job Journal API"
                 JobJnlLine."Shortcut Dimension 1 Code" := Rec."Shortcut Dimension 1 Code";
             if Rec."Shortcut Dimension 2 Code" <> '' then
                 JobJnlLine."Shortcut Dimension 2 Code" := Rec."Shortcut Dimension 2 Code";
+
+            // Username del login de la app (no toca el User ID estándar).
+            JobJnlLine."GJW Realizado Por" := Rec."GJW Realizado Por";
 
             JobJnlLine.Insert(false);  // false = no validar
             LineCount := 1;

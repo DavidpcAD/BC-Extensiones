@@ -368,6 +368,9 @@ codeunit 50220 "GJW Material Op Orchestrator"
         // Re-forzamos las dimensiones obligatorias del Job sobre la línea antes de postear.
         ForceJobDimensions(JobJnlLine, Op."Source Job No.");
 
+        // Username del login de la app (no toca el User ID estándar).
+        JobJnlLine."GJW Realizado Por" := Op."GJW Realizado Por";
+
         JobJnlLine.Insert(false);
 
         Commit();
@@ -468,7 +471,7 @@ codeunit 50220 "GJW Material Op Orchestrator"
     var
         ConsumptionCU: Codeunit "GJW Material Consumption";
     begin
-        ResultTxt := ConsumptionCU.ConsumeWarehouseMaterials(Op."Last BC Entry Nos", JobNo, JobTaskNo, Op."Document No.");
+        ResultTxt := ConsumptionCU.ConsumeWarehouseMaterials(Op."Last BC Entry Nos", JobNo, JobTaskNo, Op."Document No.", Op."GJW Realizado Por");
     end;
 
     local procedure ParseDestinationEntryNos(JsonResults: Text): Text

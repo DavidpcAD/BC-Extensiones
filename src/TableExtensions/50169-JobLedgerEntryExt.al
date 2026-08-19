@@ -7,5 +7,10 @@ tableextension 50169 JobLedgerEntryExt extends "Job Ledger Entry"
             DataClassification = CustomerContent;
             Caption = 'ID Boleta Entrega';
         }
+        field(50110; "GJW Realizado Por"; Text[50])
+        {
+            Caption = 'Realizado por';
+            DataClassification = CustomerContent;
+        }
     }
 }

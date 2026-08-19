@@ -33,6 +33,10 @@ page 50220 "GJW Material Operation API"
                 {
                     Caption = 'Document No.';
                 }
+                field(realizadoPor; Rec."GJW Realizado Por")
+                {
+                    Caption = 'Realizado por';
+                }
                 field(operationType; Rec."Operation Type")
                 {
                     Caption = 'Operation Type';

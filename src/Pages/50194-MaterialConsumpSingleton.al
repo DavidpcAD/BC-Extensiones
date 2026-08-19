@@ -47,6 +47,12 @@ page 50194 "GJW Material Consump Singleton"
                     Caption = 'Document No.';
                     ToolTip = 'Número de documento de la boleta de entrega (ej: BE000123)';
                 }
+                field(realizadoPor; RealizadoPor)
+                {
+                    ApplicationArea = All;
+                    Caption = 'Realizado por';
+                    ToolTip = 'Usuario del login de la app que realiza el consumo (ej: jerson).';
+                }
                 field(executeConsumption; ExecuteConsumption)
                 {
                     ApplicationArea = All;
@@ -80,6 +86,7 @@ page 50194 "GJW Material Consump Singleton"
         JobNo: Code[20];
         JobTaskNo: Code[20];
         DocumentNo: Code[20];
+        RealizadoPor: Text[50];
         ExecuteConsumption: Boolean;
         ResultMessage: Text;
         Success: Boolean;
@@ -132,6 +139,6 @@ page 50194 "GJW Material Consump Singleton"
     [TryFunction]
     local procedure TryConsumeWarehouseMaterials(var MaterialConsumption: Codeunit "GJW Material Consumption")
     begin
-        ResultMessage := MaterialConsumption.ConsumeWarehouseMaterials(ItemLedgerEntryNos, JobNo, JobTaskNo, DocumentNo);
+        ResultMessage := MaterialConsumption.ConsumeWarehouseMaterials(ItemLedgerEntryNos, JobNo, JobTaskNo, DocumentNo, RealizadoPor);
     end;
 }

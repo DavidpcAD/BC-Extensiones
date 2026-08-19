@@ -92,6 +92,11 @@ table 50184 "GJW Post Job Journal Cmd"
             Caption = 'Shortcut Dimension 2 Code';
             DataClassification = CustomerContent;
         }
+        field(18; "GJW Realizado Por"; Text[50])
+        {
+            Caption = 'Realizado por';
+            DataClassification = CustomerContent;
+        }
         field(100; "Lines Posted"; Integer)
         {
             Caption = 'Lines Posted';

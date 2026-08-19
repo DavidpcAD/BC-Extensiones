@@ -1,6 +1,6 @@
 codeunit 50186 "GJW Material Consumption"
 {
-    procedure ConsumeWarehouseMaterials(ItemLedgerEntryNos: Text; JobNo: Code[20]; JobTaskNo: Code[20]; DocumentNo: Code[20]): Text
+    procedure ConsumeWarehouseMaterials(ItemLedgerEntryNos: Text; JobNo: Code[20]; JobTaskNo: Code[20]; DocumentNo: Code[20]; RealizadoPor: Text[50]): Text
     var
         ItemLedgerEntry: Record "Item Ledger Entry";
         Item: Record Item;
@@ -123,6 +123,9 @@ codeunit 50186 "GJW Material Consumption"
                                 // Como aquí Job No. y Location Code se asignan directo (sin Validate), reforzamos
                                 // las dimensiones obligatorias del Job sobre la línea antes de postear.
                                 ForceJobDimensions(JobJnlLine, JobNo);
+
+                                // Username del login de la app (no toca el User ID estándar).
+                                JobJnlLine."GJW Realizado Por" := RealizadoPor;
 
                                 if JobJnlLine.Insert(true) then begin
                                     // Post

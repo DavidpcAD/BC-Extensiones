@@ -145,6 +145,11 @@ table 50220 "GJW Material Operation"
             Caption = 'Last Action Message';
             DataClassification = CustomerContent;
         }
+        field(34; "GJW Realizado Por"; Text[50])
+        {
+            Caption = 'Realizado por';
+            DataClassification = CustomerContent;
+        }
     }
 
     keys
