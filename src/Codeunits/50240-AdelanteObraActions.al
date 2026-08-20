@@ -113,6 +113,62 @@ codeunit 50240 "Adelante Obra Actions"
     end;
 
     /// <summary>
+    /// Devuelve el Área de Costo (AC) y el Centro de Costo (CC) de las obras, como JSON:
+    /// [{"no":"VB-5.22","areaCosteo":"PRO VIVIENDA","centroCosto":"VB-5.22"}, ...].
+    ///
+    /// POR QUÉ: BC es el dueño de estas dos dimensiones (la app solo las manda al CREAR
+    /// la obra); después la app las lee de acá para copiarlas a su tabla de obras. Viven
+    /// en "Default Dimension" de la obra —no son campos del Work—, así que no se pueden
+    /// exponer como campos de la API page `works`.
+    ///
+    /// obraNo = '' devuelve TODAS las obras (una sola llamada, para el sync); con un N.º
+    /// de obra devuelve solo esa (arreglo de 0 o 1 elemento).
+    /// </summary>
+    procedure GetObrasDimensions(obraNo: Code[20]): Text
+    var
+        Works: Record "GomJob Works";
+        JArr: JsonArray;
+        JObj: JsonObject;
+        result: Text;
+    begin
+        if obraNo <> '' then
+            Works.SetRange("No.", obraNo);
+        if Works.FindSet() then
+            repeat
+                Clear(JObj);
+                JObj.Add('no', Works."No.");
+                JObj.Add('areaCosteo', ObraDimension(Works, DimAreaCosto()));
+                JObj.Add('centroCosto', ObraDimension(Works, DimCentroCosto()));
+                JArr.Add(JObj);
+            until Works.Next() = 0;
+        JArr.WriteTo(result);
+        exit(result);
+    end;
+
+    /// <summary>
+    /// Valor de una dimensión de la obra ('' si no tiene). Primero la Default Dimension
+    /// (lo que escribe CreateWork); si no hay fila —obras viejas creadas a mano, donde
+    /// ValidateShortcutDimCode sobre la tabla custom no dejó Default Dimension— cae al
+    /// campo global denormalizado del Work ("Global Dimension 1/2 Code").
+    /// </summary>
+    local procedure ObraDimension(var Works: Record "GomJob Works"; dimCode: Code[20]): Text
+    var
+        DefaultDim: Record "Default Dimension";
+    begin
+        if DefaultDim.Get(Database::"GomJob Works", Works."No.", dimCode) then
+            if DefaultDim."Dimension Value Code" <> '' then
+                exit(DefaultDim."Dimension Value Code");
+
+        case ShortcutFieldNo(dimCode) of
+            1:
+                exit(Works."Global Dimension 1 Code");
+            2:
+                exit(Works."Global Dimension 2 Code");
+        end;
+        exit('');
+    end;
+
+    /// <summary>
     /// Crea el Proyecto (Job) en BC a partir de la Obra y actualiza sus tareas.
     /// Usa la última versión de la obra. Devuelve 'OK'.
     /// </summary>
