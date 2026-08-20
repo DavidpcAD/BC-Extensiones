@@ -26,6 +26,9 @@ page 50234 "Adelante Location API"
             {
                 field(Code; Rec.Code) { }
                 field(Name; Rec.Name) { }
+                // Clasificación Real / Virtual para que la app pueda filtrar
+                // los almacenes físicos de los lógicos.
+                field(tipoAlmacen; Rec."GJW Tipo Almacen") { Caption = 'Tipo de almacen'; }
             }
         }
     }
