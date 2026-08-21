@@ -738,8 +738,10 @@ codeunit 50230 "Adelante PO Actions"
     local procedure InsertItemLine(orderNo: Code[20]; lineNo: Integer; JObj: JsonObject; idx: Integer; var skippedMsg: Text): Boolean
     var
         PurchLine: Record "Purchase Line";
+        ItemUOM: Record "Item Unit of Measure";
         v: JsonToken;
         itemNo: Code[20];
+        uomCode: Code[10];
         variantCode: Code[10];
         locationCode: Code[10];
         jobNo: Code[20];
@@ -758,6 +760,7 @@ codeunit 50230 "Adelante PO Actions"
             exit(false);
         end;
 
+        uomCode := CopyStr(GetJsonText(JObj, 'unitOfMeasureCode'), 1, MaxStrLen(uomCode));
         variantCode := CopyStr(GetJsonText(JObj, 'variantCode'), 1, MaxStrLen(variantCode));
         locationCode := CopyStr(GetJsonText(JObj, 'locationCode'), 1, MaxStrLen(locationCode));
         jobNo := CopyStr(GetJsonText(JObj, 'jobNo'), 1, MaxStrLen(jobNo));
@@ -774,6 +777,18 @@ codeunit 50230 "Adelante PO Actions"
         PurchLine.Insert(true);
         PurchLine.Validate(Type, PurchLine.Type::Item);
         PurchLine.Validate("No.", itemNo);
+        // Unidad de medida: al validar el N.º, BC ya pone la de compra del ítem
+        // (Item."Purch. Unit of Measure"). Si la app manda una explícita se respeta
+        // — así cantidad y precio se interpretan en la MISMA unidad en que los
+        // calculó la app (un estañón de adhesivo son 255.000 gramos).
+        // Va ANTES de Quantity y Direct Unit Cost a propósito: cambiar la unidad
+        // recalcula la conversión de cantidad y el costo del maestro.
+        // Solo si el ítem tiene esa unidad registrada: una unidad inexistente haría
+        // fallar la reescritura completa (es todo-o-nada) y es mejor quedarse con la
+        // que BC ya puso que dejar el pedido con las líneas viejas.
+        if (uomCode <> '') and (uomCode <> PurchLine."Unit of Measure Code") then
+            if ItemUOM.Get(itemNo, uomCode) then
+                PurchLine.Validate("Unit of Measure Code", uomCode);
         if variantCode <> '' then
             PurchLine.Validate("Variant Code", variantCode);
         if locationCode <> '' then
