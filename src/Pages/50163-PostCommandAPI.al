@@ -40,9 +40,10 @@ page 50163 "GJW Post Command API"
                     ApplicationArea = All;
                     Editable = false;
                 }
-                field(jsonResults; Rec."JSON Results")
+                field(jsonResults; JsonResultsText)
                 {
                     ApplicationArea = All;
+                    Caption = 'JSON Results';
                     Editable = false;
                 }
                 field(postingStatus; Rec."Posting Status")
@@ -73,6 +74,14 @@ page 50163 "GJW Post Command API"
             }
         }
     }
+
+    var
+        // El JSON de resultados no tiene tope de largo: un batch de 15 materiales
+        // ya pesa ~5.8k y no entra en el Text[2048] de la tabla. Como la tabla de
+        // origen es temporal, el registro que se serializa en la respuesta es esta
+        // misma instancia de página, así que la variable viaja igual que el Rec
+        // (mismo patrón que 50191 / 50207).
+        JsonResultsText: Text;
 
     trigger OnInsertRecord(BelowxRec: Boolean): Boolean
     var
@@ -246,7 +255,9 @@ page 50163 "GJW Post Command API"
             // Capturar error del posting
             ErrorText := GetLastErrorText();
             Rec."Lines Posted" := 0;
-            Rec."Success Message" := StrSubstNo('ERROR AL REGISTRAR: %1', ErrorText);
+            // GetLastErrorText() puede venir más largo que el Text[2048] del campo:
+            // sin el CopyStr, el overflow tapa el error real del posteo.
+            Rec."Success Message" := CopyStr(StrSubstNo('ERROR AL REGISTRAR: %1', ErrorText), 1, MaxStrLen(Rec."Success Message"));
             Rec."Posting Status" := Rec."Posting Status"::Failed;
             Rec."Error Details" := CopyStr(ErrorText, 1, 2048);
             Rec."Processing Completed" := CurrentDateTime();
@@ -283,7 +294,7 @@ page 50163 "GJW Post Command API"
             ItemLedgerEntry.SetCurrentKey("Entry No.");
             ItemLedgerEntry.Ascending(true);
             // Construir JSON array con entry origen consumible + entry destino registrado.
-            Rec."JSON Results" := BuildPostedEntriesJson(ItemLedgerEntry, BatchSnapshotJson);
+            JsonResultsText := BuildPostedEntriesJson(ItemLedgerEntry, BatchSnapshotJson);
 
             Rec."Posting Status" := Rec."Posting Status"::Success;
             Rec."Error Details" := '';

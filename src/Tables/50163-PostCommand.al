@@ -32,6 +32,9 @@ table 50163 "GJW Post Command"
             Caption = 'JSON Results';
             Editable = false;
             DataClassification = SystemMetadata;
+            ObsoleteState = Pending;
+            ObsoleteReason = 'El JSON de resultados excede los 2048 caracteres desde ~10 líneas. Lo devuelve la variable JsonResultsText de la página 50163, sin tope de largo.';
+            ObsoleteTag = '2026-08-21-PostCommandJsonResults';
         }
         field(20; "Posting Status"; Enum "GJW Posting Status")
         {
