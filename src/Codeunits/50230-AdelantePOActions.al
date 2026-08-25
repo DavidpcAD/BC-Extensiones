@@ -70,14 +70,32 @@ codeunit 50230 "Adelante PO Actions"
         exit(StatusText(orderNo));
     end;
 
-    /// <summary>Reabre (Reopen) un pedido de compra lanzado, dejándolo en Abierto.</summary>
+    /// <summary>
+    /// Reabre (Reopen) un pedido de compra, dejándolo en Abierto para poder editarlo.
+    /// Si está esperando aprobación, primero CANCELA la solicitud: BC no deja reabrir un
+    /// documento con aprobación viva ("The approval process must be cancelled or completed
+    /// to reopen this document." — Release Purchase Document.PerformManualReopen). Es el
+    /// ciclo normal de la app: lanzado/pendiente -> reabrir -> editar líneas -> volver a
+    /// mandar a aprobación (ReleaseOrder), y ese ciclo se repite sobre el mismo pedido.
+    /// </summary>
     procedure ReopenOrder(orderNo: Code[20]): Text
     var
         PurchHeader: Record "Purchase Header";
+        ApprovalsMgmt: Codeunit "Approvals Mgmt.";
         ReleasePurchDoc: Codeunit "Release Purchase Document";
     begin
         GetOrder(PurchHeader, orderNo);
-        ReleasePurchDoc.PerformManualReopen(PurchHeader);
+
+        // Cancelar la solicitud de aprobación abierta (si la hay) antes de reabrir.
+        // Cancelar dispara la respuesta del workflow que ya deja el documento en Abierto,
+        // por eso se relee antes del Reopen y este queda como red de seguridad.
+        if ApprovalsMgmt.IsPurchaseHeaderPendingApproval(PurchHeader) then
+            ApprovalsMgmt.OnCancelPurchaseApprovalRequest(PurchHeader);
+
+        PurchHeader.Find();
+        if PurchHeader.Status <> PurchHeader.Status::Open then
+            ReleasePurchDoc.PerformManualReopen(PurchHeader);
+
         exit(StatusText(orderNo));
     end;
 
@@ -634,6 +652,9 @@ codeunit 50230 "Adelante PO Actions"
     ///  · El pedido debe estar ABIERTO. Si está Lanzado u otro estado -> Error claro, sin reemplazo.
     ///  · Falla si hay recepciones registradas o alguna línea con cantidad ya recibida.
     ///  · Todo o nada: cualquier línea inválida lanza Error y revierte TODO (no queda a medias).
+    ///  · Excepción a lo anterior: los códigos que solo son "decoración" de la línea (unidad de
+    ///    medida, obra, tarea) se aplican únicamente si existen en BC. Un código inexistente ahí
+    ///    no tumba el pedido entero: se crea la línea sin ese dato y se reporta en "Avisos".
     ///  · El "Direct Unit Cost" del JSON se valida al final, para que gane sobre el costo del maestro.
     /// El reparto del cargo (Item Charge) se hace al lanzar/registrar (AsignarCargosProducto),
     /// igual que en el resto del flujo; aquí solo se (re)crea la línea del cargo. "chargeMethod"
@@ -657,6 +678,7 @@ codeunit 50230 "Adelante PO Actions"
         chargeCount: Integer;
         skippedCount: Integer;
         skippedMsg: Text;
+        warnMsg: Text;
         idx: Integer;
         lastLineNo: Integer;
     begin
@@ -714,7 +736,7 @@ codeunit 50230 "Adelante PO Actions"
 
             case lineType of
                 'ITEM':
-                    if InsertItemLine(orderNo, lastLineNo, JObj, idx, skippedMsg) then
+                    if InsertItemLine(orderNo, lastLineNo, JObj, idx, skippedMsg, warnMsg) then
                         itemCount += 1
                     else
                         skippedCount += 1;
@@ -728,17 +750,20 @@ codeunit 50230 "Adelante PO Actions"
             end;
         end;
 
-        exit(StrSubstNo('Pedido %1 reescrito. Eliminadas %2 línea(s) previa(s); creadas %3 (%4 ítem, %5 cargo).%6',
+        exit(StrSubstNo('Pedido %1 reescrito. Eliminadas %2 línea(s) previa(s); creadas %3 (%4 ítem, %5 cargo).%6%7',
             orderNo, deletedCount, itemCount + chargeCount, itemCount, chargeCount,
-            SkippedText(skippedCount, skippedMsg)));
+            SkippedText(skippedCount, skippedMsg), WarnText(warnMsg)));
     end;
 
     /// <summary>Crea una línea de artículo. Devuelve false y reporta si se omite (cantidad 0 o negativa);
-    /// cualquier otro problema lanza Error para forzar el rollback total.</summary>
-    local procedure InsertItemLine(orderNo: Code[20]; lineNo: Integer; JObj: JsonObject; idx: Integer; var skippedMsg: Text): Boolean
+    /// cualquier otro problema lanza Error para forzar el rollback total. En warnMsg acumula lo que
+    /// se creó pero incompleto (obra o tarea inexistente), que se reporta sin abortar.</summary>
+    local procedure InsertItemLine(orderNo: Code[20]; lineNo: Integer; JObj: JsonObject; idx: Integer; var skippedMsg: Text; var warnMsg: Text): Boolean
     var
         PurchLine: Record "Purchase Line";
         ItemUOM: Record "Item Unit of Measure";
+        Job: Record Job;
+        JobTask: Record "Job Task";
         v: JsonToken;
         itemNo: Code[20];
         uomCode: Code[10];
@@ -794,10 +819,31 @@ codeunit 50230 "Adelante PO Actions"
         if locationCode <> '' then
             PurchLine.Validate("Location Code", locationCode);
         PurchLine.Validate(Quantity, qty);
-        if jobNo <> '' then
-            PurchLine.Validate("Job No.", jobNo);
-        if taskNo <> '' then
-            PurchLine.Validate("Job Task No.", taskNo);
+        // Obra y tarea: solo si existen en BC. Mismo criterio que la unidad de medida:
+        // un código inexistente hace fallar la reescritura COMPLETA (es todo-o-nada) y deja
+        // el pedido con las líneas viejas, que es peor que una línea sin obra — esta se
+        // reporta en el resultado y se corrige después. Pasó de verdad: la app mandó un
+        // código de almacén ('ALM-GRAL') en jobNo y tumbó el pedido entero.
+        // La tarea va DESPUÉS de la obra y solo si la obra entró: validar "Job No." limpia
+        // "Job Task No.", y BC tampoco acepta una tarea sin obra.
+        // Ojo: aquí solo se comprueba que el código EXISTA. Si la obra existe pero BC la
+        // rechaza por regla de negocio (bloqueada, cerrada, tarea que no es de posteo), se
+        // deja fallar a propósito: eso el usuario tiene que verlo, no perder el centro de
+        // costo en silencio.
+        if jobNo = '' then begin
+            if taskNo <> '' then
+                warnMsg += StrSubstNo(' [Línea %1 (Item %2): tarea ''%3'' sin obra; se ignora]', idx, itemNo, taskNo);
+        end else
+            if not Job.Get(jobNo) then
+                warnMsg += StrSubstNo(' [Línea %1 (Item %2): obra ''%3'' no existe en BC; línea creada sin obra]', idx, itemNo, jobNo)
+            else begin
+                PurchLine.Validate("Job No.", jobNo);
+                if taskNo <> '' then
+                    if JobTask.Get(jobNo, taskNo) then
+                        PurchLine.Validate("Job Task No.", taskNo)
+                    else
+                        warnMsg += StrSubstNo(' [Línea %1 (Item %2): tarea ''%3'' no existe en la obra %4; línea creada sin tarea]', idx, itemNo, taskNo, jobNo);
+            end;
         if lineDiscPct <> 0 then
             PurchLine.Validate("Line Discount %", lineDiscPct);
         if hasCost then
@@ -871,6 +917,15 @@ codeunit 50230 "Adelante PO Actions"
         if skippedCount = 0 then
             exit('');
         exit(StrSubstNo(' Omitidas %1:%2', skippedCount, skippedMsg));
+    end;
+
+    /// <summary>Líneas que SÍ se crearon pero sin algún dato que venía mal en el JSON.
+    /// Se devuelve en el mismo texto de resultado para que la app lo muestre.</summary>
+    local procedure WarnText(warnMsg: Text): Text
+    begin
+        if warnMsg = '' then
+            exit('');
+        exit(StrSubstNo(' Avisos:%1', warnMsg));
     end;
 
     /// <summary>
