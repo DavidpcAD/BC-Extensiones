@@ -172,10 +172,7 @@ codeunit 50230 "Adelante PO Actions"
 
         // Encabezado: N.º factura proveedor + modo Recibir y Facturar.
         PurchHeader.Validate("Vendor Invoice No.", vendorInvoiceNo);
-        if postingDate = 0D then
-            postingDate := Today();
-        PurchHeader.Validate("Posting Date", postingDate);
-        PurchHeader.Validate("Document Date", postingDate);
+        PrepararFechaRegistro(PurchHeader, postingDate);
         PurchHeader.Receive := true;
         PurchHeader.Invoice := true;
         PurchHeader.Modify(true);
@@ -265,10 +262,7 @@ codeunit 50230 "Adelante PO Actions"
             Error('No se pudieron leer las líneas (JSON inválido).');
 
         // Encabezado: solo Recibir (sin factura).
-        if postingDate = 0D then
-            postingDate := Today();
-        PurchHeader.Validate("Posting Date", postingDate);
-        PurchHeader.Validate("Document Date", postingDate);
+        PrepararFechaRegistro(PurchHeader, postingDate);
         PurchHeader.Receive := true;
         PurchHeader.Invoice := false;
         PurchHeader.Modify(true);
@@ -359,10 +353,7 @@ codeunit 50230 "Adelante PO Actions"
 
         // Encabezado: solo Facturar (sin recibir de nuevo).
         PurchHeader.Validate("Vendor Invoice No.", vendorInvoiceNo);
-        if postingDate = 0D then
-            postingDate := Today();
-        PurchHeader.Validate("Posting Date", postingDate);
-        PurchHeader.Validate("Document Date", postingDate);
+        PrepararFechaRegistro(PurchHeader, postingDate);
         PurchHeader.Receive := false;
         PurchHeader.Invoice := true;
         PurchHeader.Modify(true);
@@ -1071,6 +1062,40 @@ codeunit 50230 "Adelante PO Actions"
             PurchLine.Validate("Location Code", locCode);
 
         PurchLine.Modify(true);
+    end;
+
+    /// <summary>
+    /// Prepara las fechas de registro (Posting Date / Document Date) del encabezado sin
+    /// tumbar el registro en pedidos en moneda extranjera. Validar "Posting Date" con
+    /// divisa recalcula el tipo de cambio y reescribe las líneas, lo que exige
+    /// Status=Abierto: en un pedido Lanzado BC tira "Status must be equal to 'Open'"
+    /// (era el error que la PWA parchaba con ReopenOrder + reintento). Por eso:
+    ///  · Si la fecha no cambió, NO se revalida: se conserva el factor de cambio que ya
+    ///    tiene el pedido (no se re-cotiza en silencio) y el pedido sigue Lanzado.
+    ///  · Si cambió y el pedido está Lanzado con divisa, se reabre primero (Reopen) y se
+    ///    valida ya en Abierto; Purch.-Post lo vuelve a lanzar solo al registrar. Es el
+    ///    mismo ciclo que hacía la PWA desde el cliente, ahora en una sola llamada.
+    ///  · En moneda local no se reabre: validar la fecha ahí no toca líneas y hoy funciona
+    ///    igual con el pedido Lanzado.
+    /// No hace Modify: el caller persiste junto con Receive/Invoice.
+    /// </summary>
+    local procedure PrepararFechaRegistro(var PurchHeader: Record "Purchase Header"; postingDate: Date)
+    var
+        ReleasePurchDoc: Codeunit "Release Purchase Document";
+    begin
+        if postingDate = 0D then
+            postingDate := Today();
+
+        if (PurchHeader."Posting Date" <> postingDate) and
+           (PurchHeader."Currency Code" <> '') and
+           (PurchHeader.Status <> PurchHeader.Status::Open)
+        then
+            ReleasePurchDoc.PerformManualReopen(PurchHeader);
+
+        if PurchHeader."Posting Date" <> postingDate then
+            PurchHeader.Validate("Posting Date", postingDate);
+        if PurchHeader."Document Date" <> postingDate then
+            PurchHeader.Validate("Document Date", postingDate);
     end;
 
     local procedure GetOrder(var PurchHeader: Record "Purchase Header"; orderNo: Code[20])
