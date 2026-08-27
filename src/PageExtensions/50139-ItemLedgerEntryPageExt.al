@@ -27,5 +27,6 @@ pageextension 50139 "Adelante ILE Costo Unitario" extends "Item Ledger Entries"
             if Rec.Quantity <> 0 then
                 CostoUnitario := Rec."Cost Amount (Actual)" / Rec.Quantity;
         end;
+
     end;
 }

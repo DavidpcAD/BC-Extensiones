@@ -5,6 +5,7 @@
 //            Se exponen como Web Service OData ("AdelantePO") para que la app de
 //            Compras las invoque por S2S al aprobar/reabrir una orden.
 //
+//   - SendForApproval(orderNo)       ->  OnSendPurchaseDocForApproval -> "Pendiente de aprobación"
 //   - ReleaseOrder(orderNo)          ->  PerformManualRelease  ->  Status = "Lanzado"
 //   - ReopenOrder(orderNo)           ->  PerformManualReopen   ->  Status = "Abierto"
 //   - PostInvoice(...)               ->  Recibir + Facturar (Modo 1: todo bien)
@@ -50,16 +51,24 @@ codeunit 50230 "Adelante PO Actions"
                 ApprovalsMgmt.OnSendPurchaseDocForApproval(PurchHeader);
 
         // 2) Aprobar las solicitudes abiertas del documento (soporta varios niveles).
-        //    ApproveRecordApprovalRequest aprueba las entradas asignadas al usuario conectado.
+        //    OJO: acá NO se usa ApproveRecordApprovalRequest. Ese aprueba solo las entradas
+        //    asignadas al USUARIO CONECTADO, y la app entra por S2S como
+        //    BUSINESSCENTRAL_API_ADELANTE mientras las solicitudes salen a nombre del aprobador
+        //    de verdad (LUISROBERTO): buscaba una entrada suya, no la encontraba y tiraba
+        //    "There is no approval request to approve" (caso del 20/08/2026, con el workflow
+        //    MS-POAPW activo). ApproveApprovalRequests aprueba las entradas que uno le pasa
+        //    filtradas, sea de quien sea; BC exige para eso que el usuario conectado esté en
+        //    Configuración de usuarios con "Administrador de aprobaciones". Quién aprobó de
+        //    verdad queda en el historial de la app de Producción.
         for guard := 1 to 20 do begin
             ApprovalEntry.Reset();
             ApprovalEntry.SetRange("Table ID", Database::"Purchase Header");
             ApprovalEntry.SetRange("Document Type", ApprovalEntry."Document Type"::Order);
             ApprovalEntry.SetRange("Document No.", orderNo);
             ApprovalEntry.SetRange(Status, ApprovalEntry.Status::Open);
-            if ApprovalEntry.IsEmpty() then
+            if not ApprovalEntry.FindSet() then
                 break;
-            ApprovalsMgmt.ApproveRecordApprovalRequest(PurchHeader.RecordId);
+            ApprovalsMgmt.ApproveApprovalRequests(ApprovalEntry);
         end;
 
         // 3) Si el workflow no lo liberó automáticamente, lanzarlo manualmente.
@@ -67,6 +76,40 @@ codeunit 50230 "Adelante PO Actions"
         if PurchHeader.Status = PurchHeader.Status::Open then
             ReleasePurchDoc.PerformManualRelease(PurchHeader);
 
+        exit(StatusText(orderNo));
+    end;
+
+    /// <summary>
+    /// Manda el pedido a APROBACIÓN en BC, sin aprobarlo ni lanzarlo: dispara el workflow
+    /// (MS-POAPW-01 / MS-POAPW-02) y el documento queda "Pendiente de aprobación" con su
+    /// solicitud abierta, así quien mira BC ve qué está esperando visto bueno. Lo llama
+    /// Proveeduría al enviar la orden a aprobación; el "Aprobar y lanzar" de la app usa
+    /// después ReleaseOrder, que aprueba esa solicitud y libera.
+    /// Idempotente y tolerante: si el pedido ya está esperando aprobación no hace nada, y si
+    /// no hay workflow activo para ese documento tampoco (lo deja Abierto y ReleaseOrder lo
+    /// lanzará derecho). Devuelve el estado resultante.
+    /// </summary>
+    procedure SendForApproval(orderNo: Code[20]): Text
+    var
+        PurchHeader: Record "Purchase Header";
+        ApprovalsMgmt: Codeunit "Approvals Mgmt.";
+    begin
+        GetOrder(PurchHeader, orderNo);
+
+        // Ya está esperando aprobación: no se manda otra solicitud.
+        if ApprovalsMgmt.IsPurchaseHeaderPendingApproval(PurchHeader) then
+            exit(StatusText(orderNo));
+
+        // Solo desde Abierto: si ya está Lanzado no hay nada que aprobar.
+        if PurchHeader.Status <> PurchHeader.Status::Open then
+            exit(StatusText(orderNo));
+
+        // Sin workflow activo para este documento (p. ej. un almacén que no cae en las
+        // condiciones de MS-POAPW-01/02) se queda Abierto: no es un error.
+        if not ApprovalsMgmt.IsPurchaseApprovalsWorkflowEnabled(PurchHeader) then
+            exit(StatusText(orderNo));
+
+        ApprovalsMgmt.OnSendPurchaseDocForApproval(PurchHeader);
         exit(StatusText(orderNo));
     end;
 
