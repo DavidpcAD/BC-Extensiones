@@ -677,7 +677,8 @@ codeunit 50230 "Adelante PO Actions"
     ///
     /// linesJson = { "lines": [
     ///   { "type":"Item", "itemNo":"M01-0147", "variantCode":"", "locationCode":"ALM-GRAL",
-    ///     "quantity":6, "directUnitCost":1100, "lineDiscountPct":0, "jobNo":"VB-5.01", "taskNo":"1000" },
+    ///     "quantity":6, "directUnitCost":1100, "lineDiscountPct":0, "jobNo":"VB-5.01", "taskNo":"1000",
+    ///     "ccCode":"CC", "ccValue":"VB-5.01" },
     ///   { "type":"Charge", "itemChargeNo":"FLETE", "description":"FLETE / TRANSPORTE",
     ///     "quantity":1, "directUnitCost":45000, "chargeMethod":"Amount" }
     /// ] }
@@ -805,6 +806,8 @@ codeunit 50230 "Adelante PO Actions"
         locationCode: Code[10];
         jobNo: Code[20];
         taskNo: Code[20];
+        ccCode: Code[20];
+        ccValue: Code[20];
         qty: Decimal;
         directUnitCost: Decimal;
         lineDiscPct: Decimal;
@@ -824,6 +827,8 @@ codeunit 50230 "Adelante PO Actions"
         locationCode := CopyStr(GetJsonText(JObj, 'locationCode'), 1, MaxStrLen(locationCode));
         jobNo := CopyStr(GetJsonText(JObj, 'jobNo'), 1, MaxStrLen(jobNo));
         taskNo := CopyStr(GetJsonText(JObj, 'taskNo'), 1, MaxStrLen(taskNo));
+        ccCode := CopyStr(GetJsonText(JObj, 'ccCode'), 1, MaxStrLen(ccCode));
+        ccValue := CopyStr(GetJsonText(JObj, 'ccValue'), 1, MaxStrLen(ccValue));
         lineDiscPct := GetJsonDec(JObj, 'lineDiscountPct');
         hasCost := JObj.Get('directUnitCost', v);
         if hasCost then
@@ -878,12 +883,74 @@ codeunit 50230 "Adelante PO Actions"
                     else
                         warnMsg += StrSubstNo(' [Línea %1 (Item %2): tarea ''%3'' no existe en la obra %4; línea creada sin tarea]', idx, itemNo, taskNo, jobNo);
             end;
+        // Centro de costo de la línea. Va DESPUÉS de ítem, almacén y obra: esos tres le
+        // ponen dimensiones por defecto a la línea, y lo que manda la app tiene que ganar.
+        AplicarDimension(PurchLine, ccCode, ccValue, idx, itemNo, warnMsg);
         if lineDiscPct <> 0 then
             PurchLine.Validate("Line Discount %", lineDiscPct);
         if hasCost then
             PurchLine.Validate("Direct Unit Cost", directUnitCost); // al final: el costo negociado gana sobre el del maestro
         PurchLine.Modify(true);
         exit(true);
+    end;
+
+    /// <summary>
+    /// Pone una dimensión (el Centro de Costo) en la línea de compra.
+    ///
+    /// Para qué: hay DOS tipos de pedido y en los dos el material es para una obra.
+    ///  · Consumo inmediato -> va con Job No. + Job Task No.: BC lo carga contra el
+    ///    proyecto y no entra a inventario.
+    ///  · Para stock -> entra a bodega y queda APARTADO para esa obra hasta que campo
+    ///    lo pida. No puede llevar Job No. (BC exige tarea con él y este pedido no la
+    ///    tiene), así que la obra viaja como DIMENSIÓN de la línea. Sin esto, en BC no
+    ///    quedaba registro de para quién era ese material.
+    ///
+    /// No aborta la reescritura (que es todo-o-nada): un valor de dimensión inexistente
+    /// o bloqueado se reporta en "Avisos" y la línea queda sin él. Mismo criterio que la
+    /// unidad de medida y la obra: perder el pedido entero por un código malo es peor.
+    /// </summary>
+    local procedure AplicarDimension(var PurchLine: Record "Purchase Line"; dimCode: Code[20]; dimValue: Code[20]; idx: Integer; itemNo: Code[20]; var warnMsg: Text)
+    var
+        DimValue: Record "Dimension Value";
+        TempDimSetEntry: Record "Dimension Set Entry" temporary;
+        GLSetup: Record "General Ledger Setup";
+        DimMgt: Codeunit DimensionManagement;
+    begin
+        if (dimCode = '') or (dimValue = '') then
+            exit;
+        if not DimValue.Get(dimCode, dimValue) then begin
+            warnMsg += StrSubstNo(' [Línea %1 (Item %2): el centro de costo ''%3'' no existe en la dimensión %4; línea creada sin él]', idx, itemNo, dimValue, dimCode);
+            exit;
+        end;
+        if DimValue.Blocked then begin
+            warnMsg += StrSubstNo(' [Línea %1 (Item %2): el centro de costo ''%3'' está bloqueado; línea creada sin él]', idx, itemNo, dimValue);
+            exit;
+        end;
+
+        // Si la dimensión es uno de los dos ATAJOS del plan de cuentas, se pone por su
+        // campo: así BC actualiza el conjunto de dimensiones y los campos de atajo a la
+        // vez, que es lo que esperan los informes y el workflow.
+        GLSetup.Get();
+        if dimCode = GLSetup."Shortcut Dimension 1 Code" then
+            PurchLine.Validate("Shortcut Dimension 1 Code", dimValue)
+        else
+            if dimCode = GLSetup."Shortcut Dimension 2 Code" then
+                PurchLine.Validate("Shortcut Dimension 2 Code", dimValue)
+            else begin
+                // No es atajo: se edita el conjunto de dimensiones de la línea, dejando
+                // intactas las demás dimensiones que BC ya le puso.
+                DimMgt.GetDimensionSet(TempDimSetEntry, PurchLine."Dimension Set ID");
+                TempDimSetEntry.SetRange("Dimension Code", dimCode);
+                if TempDimSetEntry.FindFirst() then
+                    TempDimSetEntry.Delete();
+                TempDimSetEntry.Reset();
+                TempDimSetEntry.Init();
+                TempDimSetEntry."Dimension Code" := dimCode;
+                TempDimSetEntry."Dimension Value Code" := dimValue;
+                TempDimSetEntry."Dimension Value ID" := DimValue."Dimension Value ID";
+                TempDimSetEntry.Insert();
+                PurchLine.Validate("Dimension Set ID", DimMgt.GetDimensionSetID(TempDimSetEntry));
+            end;
     end;
 
     /// <summary>Crea una línea de Cargo (Item Charge). Mismo patrón fiable que AddChargeLine.</summary>
