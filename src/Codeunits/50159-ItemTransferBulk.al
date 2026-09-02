@@ -324,7 +324,131 @@ codeunit 50159 "GJW Item Transfer Bulk"
         if AppliesFromEntry <> 0 then
             ItemJnlLine."Applies-from Entry" := AppliesFromEntry;
 
+        // Dimensiones: el registro del traslado llega a G/L contra cuentas de resultado
+        // (p. ej. 60-10-010-000-000 "Costo por servicios de construcción") que llevan la
+        // dimensión AC como "Código obligatorio". Normalmente las aporta la Default Dimension
+        // del almacén, pero los almacenes de obra creados desde la app nacen sin ellas, así
+        // que completamos lo que falte con las del proyecto.
+        SetTransferDimensions(ItemJnlLine, LocationCode, NewLocationCode, NewJobNo);
+
         exit(ItemJnlLine.Insert(true));
+    end;
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Dimensiones del traslado
+    //
+    // Cada lado se registra con su propio set: "Item Jnl.-Post Line" usa "Dimension Set ID"
+    // para la salida y "New Dimension Set ID" para la entrada, y cada uno los hereda de la
+    // Default Dimension de SU almacén (el general va con AC/CC de inventario y la obra con
+    // las suyas). Acá solo se COMPLETA lo que falte con las dimensiones del proyecto —nunca
+    // se pisa lo que el almacén ya aportó—, para que un almacén de obra sin dimensiones
+    // configuradas no tumbe el registro por dimensión obligatoria.
+    // ─────────────────────────────────────────────────────────────────────────────
+    local procedure SetTransferDimensions(var ItemJnlLine: Record "Item Journal Line"; LocationCode: Code[10]; NewLocationCode: Code[10]; NewJobNo: Code[20])
+    var
+        DimMgt: Codeunit DimensionManagement;
+        SourceJobNo: Code[20];
+        DestJobNo: Code[20];
+    begin
+        SourceJobNo := JobNoForLocation(LocationCode);
+
+        DestJobNo := NewJobNo;
+        if DestJobNo = '' then
+            DestJobNo := JobNoForLocation(NewLocationCode);
+
+        if SourceJobNo <> '' then begin
+            ItemJnlLine."Dimension Set ID" := JobDimensionSetID(ItemJnlLine."Dimension Set ID", SourceJobNo);
+            // Sincronizar las dimensiones globales: el OnInsert de la tabla revalida los
+            // códigos de atajo y, si van vacíos, BORRA esas dimensiones del set recién armado.
+            DimMgt.UpdateGlobalDimFromDimSetID(
+                ItemJnlLine."Dimension Set ID",
+                ItemJnlLine."Shortcut Dimension 1 Code",
+                ItemJnlLine."Shortcut Dimension 2 Code");
+        end;
+
+        if DestJobNo <> '' then begin
+            ItemJnlLine."New Dimension Set ID" := JobDimensionSetID(ItemJnlLine."New Dimension Set ID", DestJobNo);
+            DimMgt.UpdateGlobalDimFromDimSetID(
+                ItemJnlLine."New Dimension Set ID",
+                ItemJnlLine."New Shortcut Dimension 1 Code",
+                ItemJnlLine."New Shortcut Dimension 2 Code");
+        end;
+    end;
+
+    /// <summary>N.º de proyecto de un almacén de obra ('' si el almacén no es de obra).</summary>
+    local procedure JobNoForLocation(LocationCode: Code[10]): Code[20]
+    var
+        Job: Record Job;
+    begin
+        if LocationCode = '' then
+            exit('');
+        if Job.Get(LocationCode) then
+            exit(Job."No.");
+        exit('');
+    end;
+
+    /// <summary>
+    /// Set de dimensiones resultante de completar BaseDimSetID con las Default Dimensions
+    /// del proyecto y, para las que el proyecto no tenga, las de la obra. Lo que ya venía
+    /// en el set base (Default Dimension del almacén o del producto) se respeta.
+    /// </summary>
+    local procedure JobDimensionSetID(BaseDimSetID: Integer; JobNo: Code[20]): Integer
+    var
+        DimSetEntry: Record "Dimension Set Entry";
+        TempDimSetEntry: Record "Dimension Set Entry" temporary;
+        DimMgt: Codeunit DimensionManagement;
+    begin
+        if JobNo = '' then
+            exit(BaseDimSetID);
+
+        if BaseDimSetID <> 0 then begin
+            DimSetEntry.SetRange("Dimension Set ID", BaseDimSetID);
+            if DimSetEntry.FindSet() then
+                repeat
+                    TempDimSetEntry := DimSetEntry;
+                    TempDimSetEntry.Insert();
+                until DimSetEntry.Next() = 0;
+        end;
+
+        AddMissingDefaultDimensions(TempDimSetEntry, Database::Job, JobNo);
+        // Respaldo para obras cuyo proyecto no tenga copiadas las dimensiones (obras
+        // anteriores a que la app las copiara al crear el proyecto).
+        AddMissingDefaultDimensions(TempDimSetEntry, Database::"GomJob Works", JobNo);
+
+        if TempDimSetEntry.IsEmpty() then
+            exit(BaseDimSetID);
+
+        exit(DimMgt.GetDimensionSetID(TempDimSetEntry));
+    end;
+
+    /// <summary>Agrega al set temporal las Default Dimensions con valor fijo que le falten.</summary>
+    local procedure AddMissingDefaultDimensions(var TempDimSetEntry: Record "Dimension Set Entry" temporary; TableId: Integer; No: Code[20])
+    var
+        DefaultDim: Record "Default Dimension";
+        DimensionValue: Record "Dimension Value";
+        AlreadySet: Boolean;
+    begin
+        DefaultDim.SetRange("Table ID", TableId);
+        DefaultDim.SetRange("No.", No);
+        DefaultDim.SetFilter("Dimension Value Code", '<>%1', '');
+        if not DefaultDim.FindSet() then
+            exit;
+
+        repeat
+            TempDimSetEntry.Reset();
+            TempDimSetEntry.SetRange("Dimension Code", DefaultDim."Dimension Code");
+            AlreadySet := not TempDimSetEntry.IsEmpty();
+            TempDimSetEntry.Reset();
+
+            if not AlreadySet then begin
+                TempDimSetEntry.Init();
+                TempDimSetEntry."Dimension Code" := DefaultDim."Dimension Code";
+                TempDimSetEntry."Dimension Value Code" := DefaultDim."Dimension Value Code";
+                if DimensionValue.Get(DefaultDim."Dimension Code", DefaultDim."Dimension Value Code") then
+                    TempDimSetEntry."Dimension Value ID" := DimensionValue."Dimension Value ID";
+                TempDimSetEntry.Insert();
+            end;
+        until DefaultDim.Next() = 0;
     end;
 
     local procedure ValidateLocationExists(LocationCode: Code[10]): Boolean

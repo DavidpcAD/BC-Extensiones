@@ -85,6 +85,12 @@ codeunit 50240 "Adelante Obra Actions"
         // 4) CC = dimensión normal → Default Dimension (tabla aparte, no toca el Work).
         SetObraDimension(obraNo, DimCentroCosto(), centroCosto);
 
+        // 5) Las MISMAS dimensiones sobre el almacén de la obra. Sin ellas, el traslado de
+        //    material al almacén registra el asiento de costo sin AC y BC lo rechaza
+        //    ("Select a Dimension Value Code for the Dimension Code AC..."), porque el lado
+        //    destino del diario toma sus dimensiones de la Default Dimension del Location.
+        SetLocationDimensions(obraNo, areaCosteo, centroCosto);
+
         exit('OK');
     end;
 
@@ -482,22 +488,83 @@ codeunit 50240 "Adelante Obra Actions"
 
     /// <summary>Crea o actualiza una dimensión por defecto de la obra por código de dimensión.</summary>
     local procedure SetObraDimension(obraNo: Code[20]; dimCode: Code[20]; dimValue: Code[20])
+    begin
+        SetDefaultDimension(Database::"GomJob Works", obraNo, dimCode, dimValue);
+    end;
+
+    /// <summary>Alta/actualización idempotente de una Default Dimension de cualquier tabla.</summary>
+    local procedure SetDefaultDimension(tableId: Integer; no: Code[20]; dimCode: Code[20]; dimValue: Code[20])
     var
         DefaultDim: Record "Default Dimension";
     begin
-        if (dimCode = '') or (dimValue = '') then
+        if (no = '') or (dimCode = '') or (dimValue = '') then
             exit;
-        if DefaultDim.Get(Database::"GomJob Works", obraNo, dimCode) then begin
+        if DefaultDim.Get(tableId, no, dimCode) then begin
             DefaultDim.Validate("Dimension Value Code", dimValue);
             DefaultDim.Modify(true);
         end else begin
             DefaultDim.Init();
-            DefaultDim.Validate("Table ID", Database::"GomJob Works");
-            DefaultDim.Validate("No.", obraNo);
+            DefaultDim.Validate("Table ID", tableId);
+            DefaultDim.Validate("No.", no);
             DefaultDim.Validate("Dimension Code", dimCode);
             DefaultDim.Validate("Dimension Value Code", dimValue);
             DefaultDim.Insert(true);
         end;
+    end;
+
+    /// <summary>
+    /// Copia al almacén de la obra (Location con el mismo código) las dimensiones AC y CC.
+    /// Es lo que hace Contabilidad a mano en la ficha del almacén; sin esto el lado destino
+    /// del traslado va sin dimensiones y el registro falla por dimensión obligatoria.
+    /// Idempotente.
+    /// </summary>
+    local procedure SetLocationDimensions(obraNo: Code[20]; areaCosteo: Code[20]; centroCosto: Code[20])
+    var
+        Location: Record Location;
+        locCode: Code[10];
+    begin
+        locCode := CopyStr(obraNo, 1, MaxStrLen(locCode));
+        if not Location.Get(locCode) then
+            exit;
+        SetDefaultDimension(Database::Location, locCode, DimAreaCosto(), areaCosteo);
+        SetDefaultDimension(Database::Location, locCode, DimCentroCosto(), centroCosto);
+    end;
+
+    /// <summary>
+    /// Repara obras ya creadas: vuelca las dimensiones AC/CC de la obra sobre su almacén.
+    /// obraNo = '' recorre todas las obras que tengan almacén. Devuelve JSON con lo aplicado:
+    /// [{"no":"VN-L.21","areaCosteo":"PRO VIVIENDA","centroCosto":"VN-L.21"}, ...].
+    /// </summary>
+    procedure SyncObrasLocationDimensions(obraNo: Code[20]): Text
+    var
+        Works: Record "GomJob Works";
+        Location: Record Location;
+        JArr: JsonArray;
+        JObj: JsonObject;
+        areaCosteo: Code[20];
+        centroCosto: Code[20];
+        result: Text;
+    begin
+        if obraNo <> '' then
+            Works.SetRange("No.", obraNo);
+        if Works.FindSet() then
+            repeat
+                if Location.Get(CopyStr(Works."No.", 1, MaxStrLen(Location.Code))) then begin
+                    areaCosteo := CopyStr(ObraDimension(Works, DimAreaCosto()), 1, MaxStrLen(areaCosteo));
+                    centroCosto := CopyStr(ObraDimension(Works, DimCentroCosto()), 1, MaxStrLen(centroCosto));
+                    if (areaCosteo <> '') or (centroCosto <> '') then begin
+                        SetLocationDimensions(Works."No.", areaCosteo, centroCosto);
+
+                        Clear(JObj);
+                        JObj.Add('no', Works."No.");
+                        JObj.Add('areaCosteo', areaCosteo);
+                        JObj.Add('centroCosto', centroCosto);
+                        JArr.Add(JObj);
+                    end;
+                end;
+            until Works.Next() = 0;
+        JArr.WriteTo(result);
+        exit(result);
     end;
 
     local procedure BillToCustomerNo(): Code[20]
