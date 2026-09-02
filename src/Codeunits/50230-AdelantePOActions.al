@@ -20,6 +20,15 @@ codeunit 50230 "Adelante PO Actions"
 {
     Access = Public;
 
+    var
+        // Registrar de menos EN SILENCIO es el peor resultado posible de este codeunit:
+        // la app da el movimiento por bueno, marca el material recibido y la diferencia
+        // aparece meses después contra una factura de papel. Caso real (CP-005172,
+        // 25/08/2026): el pedido tenía 6 líneas, la app mandó 7, se registró la factura
+        // CFR-009599 y faltaron ₡22.820 + IVA de tornillos que sí llegaron a la bodega.
+        // Desde acá: o entran todas las líneas, o no entra ninguna.
+        ERR_LINEAS_NO_CALZAN: Label 'No se registró NADA del pedido %1: hay línea(s) que no se pueden calzar con el pedido de compra.%2 Corregí el pedido en BC (o la orden en la app) y volvé a intentar.', Comment = '%1 = N.º de pedido, %2 = detalle por línea';
+
     /// <summary>
     /// Aprueba y lanza un pedido de compra en un solo paso (para el botón "Aprobar y lanzar"
     /// de la app): 1) si hay workflow de aprobación activo y el documento está Abierto, envía
@@ -176,6 +185,7 @@ codeunit 50230 "Adelante PO Actions"
         variantCode: Code[10];
         applyVariant: Boolean;
         postedNo: Code[20];
+        noCalzan: Text;
     begin
         GetOrder(PurchHeader, orderNo);
         if vendorInvoiceNo = '' then
@@ -232,9 +242,19 @@ codeunit 50230 "Adelante PO Actions"
                     PurchLine.Validate("Qty. to Receive", qty);
                     PurchLine.Validate("Qty. to Invoice", qty);
                     PurchLine.Modify(true);
-                end;
+                end else
+                    // La línea que no calza NO se puede tragar. Antes esto era un `if`
+                    // sin `else`: se registraba lo que sí calzaba, se devolvía el N.º de
+                    // la factura como si todo hubiera entrado, y la app marcaba recibido
+                    // material que en BC nunca existió. Así se registró CP-005172 con
+                    // 6 de 7 líneas (₡22.820 + IVA de menos contra la factura del
+                    // proveedor). Se acumula y se aborta ANTES de registrar.
+                    noCalzan += MotivoNoCalza(orderNo, itm, variantCode, applyVariant, qty, 0);
             end;
         end;
+
+        if noCalzan <> '' then
+            Error(ERR_LINEAS_NO_CALZAN, orderNo, noCalzan);
 
         // Distribuir los cargos de producto (flete) por importe entre las líneas de
         // artículo que se reciben/facturan en esta factura, antes de registrar.
@@ -269,6 +289,7 @@ codeunit 50230 "Adelante PO Actions"
         variantCode: Code[10];
         applyVariant: Boolean;
         postedNo: Code[20];
+        noCalzan: Text;
     begin
         GetOrder(PurchHeader, orderNo);
         if not JArr.ReadFrom(linesJson) then
@@ -322,9 +343,13 @@ codeunit 50230 "Adelante PO Actions"
                     PurchLine.Validate("Qty. to Receive", qty);
                     PurchLine.Validate("Qty. to Invoice", 0); // no facturar en esta recepción
                     PurchLine.Modify(true);
-                end;
+                end else
+                    noCalzan += MotivoNoCalza(orderNo, itm, variantCode, applyVariant, qty, 0);
             end;
         end;
+
+        if noCalzan <> '' then
+            Error(ERR_LINEAS_NO_CALZAN, orderNo, noCalzan);
 
         // Distribuir los cargos de producto (flete) por importe entre las líneas de
         // artículo que se reciben en esta recepción. El cargo se recibe (no se factura);
@@ -357,6 +382,7 @@ codeunit 50230 "Adelante PO Actions"
         variantCode: Code[10];
         applyVariant: Boolean;
         postedNo: Code[20];
+        noCalzan: Text;
     begin
         GetOrder(PurchHeader, orderNo);
         if vendorInvoiceNo = '' then
@@ -412,9 +438,13 @@ codeunit 50230 "Adelante PO Actions"
                     PurchLine.Validate("Qty. to Receive", 0); // no recibir de nuevo
                     PurchLine.Validate("Qty. to Invoice", qty);
                     PurchLine.Modify(true);
-                end;
+                end else
+                    noCalzan += MotivoNoCalza(orderNo, itm, variantCode, applyVariant, qty, 1);
             end;
         end;
+
+        if noCalzan <> '' then
+            Error(ERR_LINEAS_NO_CALZAN, orderNo, noCalzan);
 
         // Facturar el cargo de producto ya recibido: conserva la asignación creada en la
         // recepción y solo ajusta la cantidad a facturar (o la crea si no existiera).
@@ -803,6 +833,72 @@ codeunit 50230 "Adelante PO Actions"
             SkippedText(skippedCount, skippedMsg), WarnText(warnMsg)));
     end;
 
+    /// <summary>
+    /// Devuelve las líneas del pedido de compra en JSON, para que la app pueda COTEJAR
+    /// lo que quedó en BC contra lo que dice su base. Es el "decime qué te quedó" que
+    /// faltaba: hasta ahora la app escribía las líneas y no volvía a mirar nunca, y así
+    /// una orden de 7 líneas quedó en BC con 6 sin que nadie se enterara (CP-005172,
+    /// ₡22.820 + IVA que el proveedor facturó y BC nunca registró).
+    ///
+    /// Va por el codeunit —y no solo por la página API— a propósito: es el MISMO canal
+    /// por el que la app escribe (web service 'AdelantePO', ya publicado), así que lo
+    /// que se lee acá es exactamente lo que quedó del otro lado de la escritura, sin
+    /// depender de que otra API esté publicada o permisada.
+    ///
+    ///   POST .../ODataV4/AdelantePO_GetOrderLines?company={companyId}
+    ///   body: { "orderNo": "CP-005172" }
+    ///   ->   { "value": "{"orderNo":"CP-005172","status":"Open","lines":[ … ]}" }
+    /// </summary>
+    procedure GetOrderLines(orderNo: Code[20]): Text
+    var
+        PurchHeader: Record "Purchase Header";
+        PurchLine: Record "Purchase Line";
+        Root: JsonObject;
+        Arr: JsonArray;
+        Obj: JsonObject;
+        salida: Text;
+    begin
+        GetOrder(PurchHeader, orderNo);
+        PurchLine.SetRange("Document Type", PurchLine."Document Type"::Order);
+        PurchLine.SetRange("Document No.", orderNo);
+        if PurchLine.FindSet() then
+            repeat
+                Clear(Obj);
+                Obj.Add('lineNo', PurchLine."Line No.");
+                // El texto del tipo es el CAPTION del enum y sale traducido según el
+                // idioma de la sesión del web service ("Producto" en español), así que
+                // no sirve para decidir nada del otro lado. El número del enum sí es
+                // estable: 2 = Artículo, 5 = Cargo (prod.). Se mandan los dos.
+                Obj.Add('type', Format(PurchLine.Type));
+                Obj.Add('typeNo', PurchLine.Type.AsInteger());
+                Obj.Add('no', PurchLine."No.");
+                Obj.Add('description', PurchLine.Description);
+                Obj.Add('variantCode', PurchLine."Variant Code");
+                Obj.Add('unitOfMeasureCode', PurchLine."Unit of Measure Code");
+                Obj.Add('locationCode', PurchLine."Location Code");
+                Obj.Add('quantity', PurchLine.Quantity);
+                Obj.Add('quantityReceived', PurchLine."Quantity Received");
+                Obj.Add('quantityInvoiced', PurchLine."Quantity Invoiced");
+                Obj.Add('outstandingQuantity', PurchLine."Outstanding Quantity");
+                Obj.Add('qtyRcdNotInvoiced', PurchLine."Qty. Rcd. Not Invoiced");
+                Obj.Add('directUnitCost', PurchLine."Direct Unit Cost");
+                Obj.Add('lineDiscountPct', PurchLine."Line Discount %");
+                Obj.Add('lineAmount', PurchLine."Line Amount");
+                Obj.Add('jobNo', PurchLine."Job No.");
+                Obj.Add('jobTaskNo', PurchLine."Job Task No.");
+                Arr.Add(Obj);
+            until PurchLine.Next() = 0;
+        Root.Add('orderNo', orderNo);
+        // El estado REAL del pedido: la API estándar v2.0 devuelve "Open" también para
+        // los lanzados, así que este es el único lugar del que la app lo puede sacar.
+        Root.Add('status', Format(PurchHeader.Status));
+        Root.Add('currencyCode', PurchHeader."Currency Code");
+        Root.Add('vendorNo', PurchHeader."Buy-from Vendor No.");
+        Root.Add('lines', Arr);
+        Root.WriteTo(salida);
+        exit(salida);
+    end;
+
     /// <summary>Crea una línea de artículo. Devuelve false y reporta si se omite (cantidad 0 o negativa);
     /// cualquier otro problema lanza Error para forzar el rollback total. En warnMsg acumula lo que
     /// se creó pero incompleto (obra o tarea inexistente), que se reporta sin abortar.</summary>
@@ -1024,6 +1120,51 @@ codeunit 50230 "Adelante PO Actions"
             if not v.AsValue().IsNull() then
                 exit(v.AsValue().AsDecimal());
         exit(0);
+    end;
+
+    /// <summary>
+    /// Por qué una línea del JSON no calzó con ninguna línea del pedido. No alcanza con
+    /// decir "no calzó": quien lee el error tiene que poder arreglarlo sin entrar a BC a
+    /// adivinar. Se distingue el artículo que NO ESTÁ en el pedido (el caso CP-005172),
+    /// del que está con OTRA VARIANTE, y del que ya no tiene saldo.
+    /// modo: 0 = recibir (mira Outstanding Quantity) · 1 = facturar lo recibido
+    /// (mira Qty. Rcd. Not Invoiced).
+    /// </summary>
+    local procedure MotivoNoCalza(orderNo: Code[20]; itemNo: Code[20]; variantCode: Code[10]; applyVariant: Boolean; qty: Decimal; modo: Integer): Text
+    var
+        PurchLine: Record "Purchase Line";
+        variantes: Text;
+        saldo: Decimal;
+        hayItem: Boolean;
+    begin
+        PurchLine.Reset();
+        PurchLine.SetRange("Document Type", PurchLine."Document Type"::Order);
+        PurchLine.SetRange("Document No.", orderNo);
+        PurchLine.SetRange(Type, PurchLine.Type::Item);
+        PurchLine.SetRange("No.", itemNo);
+        if PurchLine.FindSet() then
+            repeat
+                hayItem := true;
+                if PurchLine."Variant Code" = '' then
+                    variantes += ' (sin variante)'
+                else
+                    variantes += ' ' + PurchLine."Variant Code";
+                if modo = 1 then
+                    saldo += PurchLine."Qty. Rcd. Not Invoiced"
+                else
+                    saldo += PurchLine."Outstanding Quantity";
+            until PurchLine.Next() = 0;
+
+        if not hayItem then
+            exit(StrSubstNo(' [%1: el pedido no tiene ninguna línea de este artículo]', itemNo));
+        if applyVariant then begin
+            PurchLine.SetRange("Variant Code", variantCode);
+            if PurchLine.IsEmpty() then
+                exit(StrSubstNo(' [%1: se pidió con variante ''%2'' y el pedido tiene%3]', itemNo, variantCode, variantes));
+        end;
+        if modo = 1 then
+            exit(StrSubstNo(' [%1: se quiso facturar %2 y solo hay %3 recibido sin facturar]', itemNo, qty, saldo));
+        exit(StrSubstNo(' [%1: se quiso recibir %2 y solo quedan %3 pendientes]', itemNo, qty, saldo));
     end;
 
     local procedure SkippedText(skippedCount: Integer; skippedMsg: Text): Text

@@ -30,9 +30,18 @@ page 50239 "Adelante Posted Rcpt Line API"
                 field(id; Rec.SystemId) { Caption = 'Id'; Editable = false; }
                 field(documentNo; Rec."Document No.") { Caption = 'Document No.'; }
                 field(lineNo; Rec."Line No.") { Caption = 'Line No.'; }
+                // Pedido de origen: sin esto no se puede ir de una orden de la app a lo
+                // que BC recibió de verdad (la conciliación línea por línea). Faltaba, y
+                // por eso una orden completada no se podía verificar contra nada.
+                field(orderNo; Rec."Order No.") { Caption = 'Order No.'; }
+                field(orderLineNo; Rec."Order Line No.") { Caption = 'Order Line No.'; }
                 field(buyFromVendorNo; Rec."Buy-from Vendor No.") { Caption = 'Buy-from Vendor No.'; }
                 field(no; Rec."No.") { Caption = 'No.'; }
                 field(description; Rec.Description) { Caption = 'Description'; }
+                // La variante distingue dos materiales que comparten N.º de artículo:
+                // sin ella, el cotejo no puede saber cuál de las dos se recibió.
+                field(variantCode; Rec."Variant Code") { Caption = 'Variant Code'; }
+                field(quantityInvoiced; Rec."Quantity Invoiced") { Caption = 'Quantity Invoiced'; }
                 field(locationCode; Rec."Location Code") { Caption = 'Location Code'; }
                 field(quantity; Rec.Quantity) { Caption = 'Quantity'; }
                 // Quantity y Direct Unit Cost están en la unidad de la LÍNEA (p.ej. ESTAÑON),
