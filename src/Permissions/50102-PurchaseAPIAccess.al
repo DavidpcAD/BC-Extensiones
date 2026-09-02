@@ -30,6 +30,13 @@ permissionset 50102 "GJW Purch API"
         tabledata "Purch. Rcpt. Line" = R,
         tabledata "Purch. Inv. Header" = R,
         tabledata "Purch. Inv. Line" = R,
+        // Forense de un pedido (GetOrderForensics): archivo y registro de cambios.
+        tabledata "Purchase Header Archive" = R,
+        tabledata "Purchase Line Archive" = R,
+        tabledata "Change Log Entry" = R,
+        tabledata "Change Log Setup" = R,
+        tabledata "Change Log Setup (Table)" = R,
+        tabledata "Purchases & Payables Setup" = R,
 
         // Lectura de ledgers para la vista previa (Preview Posting)
         tabledata "G/L Entry" = R,

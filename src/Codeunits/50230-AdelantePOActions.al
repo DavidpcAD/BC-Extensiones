@@ -899,6 +899,154 @@ codeunit 50230 "Adelante PO Actions"
         exit(salida);
     end;
 
+    /// <summary>
+    /// FORENSE de un pedido de compra: todo lo que BC todavía sabe de él aunque el
+    /// documento ya no exista. Devuelve JSON con (a) las versiones ARCHIVADAS y sus
+    /// líneas, y (b) las entradas del REGISTRO DE CAMBIOS de su encabezado y sus líneas.
+    ///
+    /// Para qué: el 25/08/2026 dos pedidos se lanzaron con una línea de menos
+    /// (CP-005157 y CP-005172) y la app registró la factura igual, de menos. La causa
+    /// de una se pudo probar (el artículo M06-0116 estaba bloqueado en BC); la de la
+    /// otra NO, porque el motivo que BC devolvió murió en un toast y ni el archivo ni
+    /// el registro de cambios se pueden consultar desde afuera. Esto lo arregla: la
+    /// pregunta "¿esa línea existió alguna vez en el pedido, y quién la sacó?" se
+    /// contesta con datos.
+    ///
+    /// Una lista vacía NO es una respuesta si no se sabe si BC estaba anotando. Por eso
+    /// se devuelve también la CONFIGURACIÓN: si el registro de cambios está activo, si
+    /// cubre las tablas 38 y 39, y si el archivado de pedidos está encendido. Sin eso,
+    /// "no hay nada" se lee como "no pasó nada", que es una conclusión distinta.
+    ///
+    ///   POST .../ODataV4/AdelantePO_GetOrderForensics?company={companyId}
+    ///   body: { "orderNo": "CP-005157" }
+    /// </summary>
+    procedure GetOrderForensics(orderNo: Code[20]): Text
+    var
+        HeaderArchive: Record "Purchase Header Archive";
+        LineArchive: Record "Purchase Line Archive";
+        ChangeLog: Record "Change Log Entry";
+        ChangeLogSetup: Record "Change Log Setup";
+        ChangeLogTable: Record "Change Log Setup (Table)";
+        PurchSetup: Record "Purchases & Payables Setup";
+        Root: JsonObject;
+        Config: JsonObject;
+        Versiones: JsonArray;
+        Lineas: JsonArray;
+        Cambios: JsonArray;
+        Obj: JsonObject;
+        salida: Text;
+        nCambios: Integer;
+    begin
+        // ── Configuración: sin esto, una lista vacía no se puede interpretar ──
+        if ChangeLogSetup.Get() then
+            Config.Add('changeLogActivado', ChangeLogSetup."Change Log Activated")
+        else
+            Config.Add('changeLogActivado', false);
+        // Que el registro esté ACTIVO no dice que estuviera anotando ESTAS tablas: eso
+        // se configura tabla por tabla (38 = Purchase Header, 39 = Purchase Line).
+        Config.Add('logTabla38', DescribeChangeLogTable(ChangeLogTable, 38));
+        Config.Add('logTabla39', DescribeChangeLogTable(ChangeLogTable, 39));
+        if PurchSetup.Get() then
+            Config.Add('archivarPedidos', PurchSetup."Archive Orders")
+        else
+            Config.Add('archivarPedidos', false);
+        Root.Add('config', Config);
+
+        // ── (a) Versiones archivadas del pedido, con sus líneas ──
+        HeaderArchive.SetRange("Document Type", HeaderArchive."Document Type"::Order);
+        HeaderArchive.SetRange("No.", orderNo);
+        if HeaderArchive.FindSet() then
+            repeat
+                Clear(Lineas);
+                LineArchive.Reset();
+                LineArchive.SetRange("Document Type", LineArchive."Document Type"::Order);
+                LineArchive.SetRange("Document No.", orderNo);
+                LineArchive.SetRange("Doc. No. Occurrence", HeaderArchive."Doc. No. Occurrence");
+                LineArchive.SetRange("Version No.", HeaderArchive."Version No.");
+                if LineArchive.FindSet() then
+                    repeat
+                        Clear(Obj);
+                        Obj.Add('lineNo', LineArchive."Line No.");
+                        // El número del enum, no su caption: el texto sale traducido
+                        // según el idioma de la sesión y del otro lado no sirve.
+                        Obj.Add('typeNo', LineArchive.Type.AsInteger());
+                        Obj.Add('no', LineArchive."No.");
+                        Obj.Add('description', LineArchive.Description);
+                        Obj.Add('variantCode', LineArchive."Variant Code");
+                        Obj.Add('unitOfMeasureCode', LineArchive."Unit of Measure Code");
+                        Obj.Add('locationCode', LineArchive."Location Code");
+                        Obj.Add('quantity', LineArchive.Quantity);
+                        Obj.Add('directUnitCost', LineArchive."Direct Unit Cost");
+                        Obj.Add('lineAmount', LineArchive."Line Amount");
+                        Obj.Add('jobNo', LineArchive."Job No.");
+                        Obj.Add('jobTaskNo', LineArchive."Job Task No.");
+                        Lineas.Add(Obj);
+                    until LineArchive.Next() = 0;
+                Clear(Obj);
+                Obj.Add('versionNo', HeaderArchive."Version No.");
+                Obj.Add('docNoOccurrence', HeaderArchive."Doc. No. Occurrence");
+                Obj.Add('vendorNo', HeaderArchive."Buy-from Vendor No.");
+                // Quién archivó y cuándo: es la mitad de la pregunta forense — permite
+                // cruzar esta versión contra la hora del incidente.
+                Obj.Add('fechaArchivado', Format(HeaderArchive."Date Archived", 0, 9));
+                Obj.Add('horaArchivado', Format(HeaderArchive."Time Archived", 0, 9));
+                Obj.Add('archivadoPor', HeaderArchive."Archived By");
+                Obj.Add('lineas', Lineas);
+                Versiones.Add(Obj);
+            until HeaderArchive.Next() = 0;
+        Root.Add('archivadas', Versiones);
+
+        // ── (b) Registro de cambios del encabezado (38) y de las líneas (39) ──
+        // En las dos tablas el N.º de documento es el 2.º campo de la clave primaria.
+        // "Field Caption" es un FlowField: sin SetAutoCalcFields sale SIEMPRE vacío, y
+        // ahí se pierde justo el dato que convierte una fila de log en evidencia.
+        ChangeLog.SetAutoCalcFields("Field Caption");
+        ChangeLog.SetCurrentKey("Entry No.");
+        // De la más NUEVA a la más vieja: con el techo de abajo, quedarse con las 300
+        // más viejas sería descartar precisamente el borrado que se está buscando.
+        ChangeLog.Ascending(false);
+        ChangeLog.SetFilter("Table No.", '%1|%2', 38, 39);
+        ChangeLog.SetRange("Primary Key Field 2 Value", orderNo);
+        if ChangeLog.FindSet() then
+            repeat
+                nCambios += 1;
+                if nCambios <= 300 then begin   // techo: esto es diagnóstico, no un export
+                    Clear(Obj);
+                    Obj.Add('entryNo', ChangeLog."Entry No.");
+                    Obj.Add('tableNo', ChangeLog."Table No.");
+                    Obj.Add('fecha', Format(ChangeLog."Date and Time", 0, 9));
+                    Obj.Add('usuario', ChangeLog."User ID");
+                    Obj.Add('tipoCambioNo', ChangeLog."Type of Change".AsInteger());
+                    Obj.Add('tipoCambio', Format(ChangeLog."Type of Change"));
+                    Obj.Add('campoNo', ChangeLog."Field No.");
+                    Obj.Add('campo', ChangeLog."Field Caption");
+                    Obj.Add('valorViejo', ChangeLog."Old Value");
+                    Obj.Add('valorNuevo', ChangeLog."New Value");
+                    // El 3.er campo de la clave es el N.º de LÍNEA (en la tabla 39):
+                    // sin él hay que parsear el string de la clave para agrupar por línea.
+                    Obj.Add('lineaClave', ChangeLog."Primary Key Field 3 Value");
+                    Obj.Add('clave', ChangeLog."Primary Key");
+                    Cambios.Add(Obj);
+                end;
+            until ChangeLog.Next() = 0;
+        Root.Add('cambios', Cambios);
+        Root.Add('cambiosTotal', nCambios);
+        Root.Add('orderNo', orderNo);
+        Root.WriteTo(salida);
+        exit(salida);
+    end;
+
+    /// <summary>Cómo quedó configurado el registro de cambios para UNA tabla: "no" si no
+    /// está en la lista, o qué eventos anota. Es lo que separa "nadie tocó nada" de "BC
+    /// no estaba anotando eso".</summary>
+    local procedure DescribeChangeLogTable(var ChangeLogTable: Record "Change Log Setup (Table)"; tablaNo: Integer): Text
+    begin
+        if not ChangeLogTable.Get(tablaNo) then
+            exit('no-configurada');
+        exit(StrSubstNo('insercion=%1 modificacion=%2 borrado=%3',
+            ChangeLogTable."Log Insertion", ChangeLogTable."Log Modification", ChangeLogTable."Log Deletion"));
+    end;
+
     /// <summary>Crea una línea de artículo. Devuelve false y reporta si se omite (cantidad 0 o negativa);
     /// cualquier otro problema lanza Error para forzar el rollback total. En warnMsg acumula lo que
     /// se creó pero incompleto (obra o tarea inexistente), que se reporta sin abortar.</summary>
