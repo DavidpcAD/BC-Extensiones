@@ -97,7 +97,14 @@ codeunit 50230 "Adelante PO Actions"
         GetOrder(PurchHeader, orderNo);
 
         // Ya está esperando aprobación: no se manda otra solicitud.
-        if ApprovalsMgmt.IsPurchaseHeaderPendingApproval(PurchHeader) then
+        // OJO: no usar IsPurchaseHeaderPendingApproval aquí. Esa función NO significa
+        // "está pendiente": devuelve true cuando el documento está Abierto Y le aplica un
+        // workflow — o sea, exactamente el caso en que SÍ hay que enviar. Con ese guard,
+        // el envío desde la app nunca ocurría (caso CP-003884, 27/08/2026) aunque desde
+        // la UI de BC sí funcionaba.
+        if (PurchHeader.Status = PurchHeader.Status::"Pending Approval") or
+           ApprovalsMgmt.HasOpenApprovalEntries(PurchHeader.RecordId)
+        then
             exit(StatusText(orderNo));
 
         // Solo desde Abierto: si ya está Lanzado no hay nada que aprobar.
@@ -132,7 +139,13 @@ codeunit 50230 "Adelante PO Actions"
         // Cancelar la solicitud de aprobación abierta (si la hay) antes de reabrir.
         // Cancelar dispara la respuesta del workflow que ya deja el documento en Abierto,
         // por eso se relee antes del Reopen y este queda como red de seguridad.
-        if ApprovalsMgmt.IsPurchaseHeaderPendingApproval(PurchHeader) then
+        // OJO: no usar IsPurchaseHeaderPendingApproval aquí — con el documento en
+        // "Pendiente de aprobación" devuelve false (exige Status=Abierto) y el cancel se
+        // saltaba, dejando que PerformManualReopen tirara "The approval process must be
+        // cancelled or completed to reopen this document" (caso CP-003884, 27/08/2026).
+        if (PurchHeader.Status = PurchHeader.Status::"Pending Approval") or
+           ApprovalsMgmt.HasOpenApprovalEntries(PurchHeader.RecordId)
+        then
             ApprovalsMgmt.OnCancelPurchaseApprovalRequest(PurchHeader);
 
         PurchHeader.Find();
@@ -911,18 +924,18 @@ codeunit 50230 "Adelante PO Actions"
     /// </summary>
     local procedure AplicarDimension(var PurchLine: Record "Purchase Line"; dimCode: Code[20]; dimValue: Code[20]; idx: Integer; itemNo: Code[20]; var warnMsg: Text)
     var
-        DimValue: Record "Dimension Value";
+        DimValueRec: Record "Dimension Value";
         TempDimSetEntry: Record "Dimension Set Entry" temporary;
         GLSetup: Record "General Ledger Setup";
         DimMgt: Codeunit DimensionManagement;
     begin
         if (dimCode = '') or (dimValue = '') then
             exit;
-        if not DimValue.Get(dimCode, dimValue) then begin
+        if not DimValueRec.Get(dimCode, dimValue) then begin
             warnMsg += StrSubstNo(' [Línea %1 (Item %2): el centro de costo ''%3'' no existe en la dimensión %4; línea creada sin él]', idx, itemNo, dimValue, dimCode);
             exit;
         end;
-        if DimValue.Blocked then begin
+        if DimValueRec.Blocked then begin
             warnMsg += StrSubstNo(' [Línea %1 (Item %2): el centro de costo ''%3'' está bloqueado; línea creada sin él]', idx, itemNo, dimValue);
             exit;
         end;
@@ -947,7 +960,7 @@ codeunit 50230 "Adelante PO Actions"
                 TempDimSetEntry.Init();
                 TempDimSetEntry."Dimension Code" := dimCode;
                 TempDimSetEntry."Dimension Value Code" := dimValue;
-                TempDimSetEntry."Dimension Value ID" := DimValue."Dimension Value ID";
+                TempDimSetEntry."Dimension Value ID" := DimValueRec."Dimension Value ID";
                 TempDimSetEntry.Insert();
                 PurchLine.Validate("Dimension Set ID", DimMgt.GetDimensionSetID(TempDimSetEntry));
             end;
