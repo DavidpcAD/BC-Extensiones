@@ -11,6 +11,7 @@
 //   - PostInvoice(...)               ->  Recibir + Facturar (Modo 1: todo bien)
 //   - PostReceipt(...)               ->  Solo Recibir       (Modo 2: factura en revisión)
 //   - PostInvoiceOfReceived(...)     ->  Solo Facturar lo ya recibido (Modo 2: cierre)
+//   - SetRealizadoPor(orderNo, quien) ->  deja en el pedido QUIÉN registra (para "Realizado por")
 //
 // Llamada desde la app (OData V4 unbound action, S2S):
 //   POST .../ODataV4/AdelantePO_ReleaseOrder?company={companyId}
@@ -171,6 +172,32 @@ codeunit 50230 "Adelante PO Actions"
     /// quedan en 0 (el pedido sigue abierto hasta completar todo). Devuelve el N.º de
     /// la factura de compra registrada.
     /// </summary>
+    /// <summary>
+    /// Deja escrito en el pedido QUIÉN va a registrar (nombre de la persona en la app, no la
+    /// cuenta de servicio S2S con la que la app entra a BC — esa es siempre la misma y por eso
+    /// el "Id. usuario" de los movimientos no dice nada). Se llama ANTES de PostInvoice /
+    /// PostReceipt / PostInvoiceOfReceived; el dato queda en el encabezado del pedido y de ahí
+    /// lo levanta el codeunit 50245 cuando BC arma el consumo de la obra, así aparece en el
+    /// "Realizado por" del Mov. proyecto (pág. 92) igual que los consumos de Producción.
+    ///
+    /// Va en un procedure aparte, y no como parámetro de los Post*, para no romper la firma de
+    /// los web services que la app YA está llamando en Producción: si la app nueva le habla a
+    /// una extensión vieja (o al revés), lo único que se pierde es el nombre — el registro de
+    /// la factura sigue funcionando igual.
+    /// Devuelve el nombre tal como quedó guardado (recortado a 50 caracteres).
+    /// </summary>
+    procedure SetRealizadoPor(orderNo: Code[20]; realizadoPor: Text): Text
+    var
+        PurchHeader: Record "Purchase Header";
+    begin
+        GetOrder(PurchHeader, orderNo);
+        PurchHeader."GJW Realizado Por" := CopyStr(realizadoPor, 1, MaxStrLen(PurchHeader."GJW Realizado Por"));
+        // Modify SIN triggers a propósito: es un dato de bitácora, no toca la lógica del
+        // documento, y el pedido puede estar LANZADO cuando se registra la factura.
+        PurchHeader.Modify();
+        exit(PurchHeader."GJW Realizado Por");
+    end;
+
     procedure PostInvoice(orderNo: Code[20]; vendorInvoiceNo: Code[35]; linesJson: Text; postingDate: Date): Text
     var
         PurchHeader: Record "Purchase Header";
