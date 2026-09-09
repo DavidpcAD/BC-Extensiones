@@ -211,6 +211,7 @@ codeunit 50230 "Adelante PO Actions"
         qty: Decimal;
         variantCode: Code[10];
         applyVariant: Boolean;
+        tipoLinea: Enum "Purchase Line Type";
         postedNo: Code[20];
         noCalzan: Text;
     begin
@@ -255,11 +256,13 @@ codeunit 50230 "Adelante PO Actions"
                     variantCode := CopyStr(v.AsValue().AsText(), 1, MaxStrLen(variantCode));
                     applyVariant := true;
                 end;
+            // Tipo de la línea: por omisión Artículo (ver TipoDeLineaPedida).
+            tipoLinea := TipoDeLineaPedida(JObj);
             if (itm <> '') and (qty > 0) then begin
                 PurchLine.Reset();
                 PurchLine.SetRange("Document Type", PurchLine."Document Type"::Order);
                 PurchLine.SetRange("Document No.", orderNo);
-                PurchLine.SetRange(Type, PurchLine.Type::Item);
+                PurchLine.SetRange(Type, tipoLinea);
                 PurchLine.SetRange("No.", itm);
                 if applyVariant then
                     PurchLine.SetRange("Variant Code", variantCode);
@@ -276,7 +279,7 @@ codeunit 50230 "Adelante PO Actions"
                     // material que en BC nunca existió. Así se registró CP-005172 con
                     // 6 de 7 líneas (₡22.820 + IVA de menos contra la factura del
                     // proveedor). Se acumula y se aborta ANTES de registrar.
-                    noCalzan += MotivoNoCalza(orderNo, itm, variantCode, applyVariant, qty, 0);
+                    noCalzan += MotivoNoCalza(orderNo, tipoLinea, itm, variantCode, applyVariant, qty, 0);
             end;
         end;
 
@@ -315,6 +318,7 @@ codeunit 50230 "Adelante PO Actions"
         qty: Decimal;
         variantCode: Code[10];
         applyVariant: Boolean;
+        tipoLinea: Enum "Purchase Line Type";
         postedNo: Code[20];
         noCalzan: Text;
     begin
@@ -356,11 +360,13 @@ codeunit 50230 "Adelante PO Actions"
                     variantCode := CopyStr(v.AsValue().AsText(), 1, MaxStrLen(variantCode));
                     applyVariant := true;
                 end;
+            // Tipo de la línea: por omisión Artículo (ver TipoDeLineaPedida).
+            tipoLinea := TipoDeLineaPedida(JObj);
             if (itm <> '') and (qty > 0) then begin
                 PurchLine.Reset();
                 PurchLine.SetRange("Document Type", PurchLine."Document Type"::Order);
                 PurchLine.SetRange("Document No.", orderNo);
-                PurchLine.SetRange(Type, PurchLine.Type::Item);
+                PurchLine.SetRange(Type, tipoLinea);
                 PurchLine.SetRange("No.", itm);
                 if applyVariant then
                     PurchLine.SetRange("Variant Code", variantCode);
@@ -371,7 +377,7 @@ codeunit 50230 "Adelante PO Actions"
                     PurchLine.Validate("Qty. to Invoice", 0); // no facturar en esta recepción
                     PurchLine.Modify(true);
                 end else
-                    noCalzan += MotivoNoCalza(orderNo, itm, variantCode, applyVariant, qty, 0);
+                    noCalzan += MotivoNoCalza(orderNo, tipoLinea, itm, variantCode, applyVariant, qty, 0);
             end;
         end;
 
@@ -408,6 +414,7 @@ codeunit 50230 "Adelante PO Actions"
         qty: Decimal;
         variantCode: Code[10];
         applyVariant: Boolean;
+        tipoLinea: Enum "Purchase Line Type";
         postedNo: Code[20];
         noCalzan: Text;
     begin
@@ -451,11 +458,13 @@ codeunit 50230 "Adelante PO Actions"
                     variantCode := CopyStr(v.AsValue().AsText(), 1, MaxStrLen(variantCode));
                     applyVariant := true;
                 end;
+            // Tipo de la línea: por omisión Artículo (ver TipoDeLineaPedida).
+            tipoLinea := TipoDeLineaPedida(JObj);
             if (itm <> '') and (qty > 0) then begin
                 PurchLine.Reset();
                 PurchLine.SetRange("Document Type", PurchLine."Document Type"::Order);
                 PurchLine.SetRange("Document No.", orderNo);
-                PurchLine.SetRange(Type, PurchLine.Type::Item);
+                PurchLine.SetRange(Type, tipoLinea);
                 PurchLine.SetRange("No.", itm);
                 if applyVariant then
                     PurchLine.SetRange("Variant Code", variantCode);
@@ -466,7 +475,7 @@ codeunit 50230 "Adelante PO Actions"
                     PurchLine.Validate("Qty. to Invoice", qty);
                     PurchLine.Modify(true);
                 end else
-                    noCalzan += MotivoNoCalza(orderNo, itm, variantCode, applyVariant, qty, 1);
+                    noCalzan += MotivoNoCalza(orderNo, tipoLinea, itm, variantCode, applyVariant, qty, 1);
             end;
         end;
 
@@ -781,6 +790,7 @@ codeunit 50230 "Adelante PO Actions"
         deletedCount: Integer;
         itemCount: Integer;
         chargeCount: Integer;
+        otherCount: Integer;   // recurso + activo fijo
         skippedCount: Integer;
         skippedMsg: Text;
         warnMsg: Text;
@@ -850,13 +860,28 @@ codeunit 50230 "Adelante PO Actions"
                         chargeCount += 1
                     else
                         skippedCount += 1;
+                // Una compra directa puede no ser material: un servicio del catálogo
+                // de recursos (alquiler de maquinaria, servicio de corte) o la compra
+                // de un activo fijo. Es la MISMA línea de compra con otro Type.
+                'RESOURCE':
+                    if InsertResourceLine(orderNo, lastLineNo, JObj, idx, skippedMsg) then
+                        otherCount += 1
+                    else
+                        skippedCount += 1;
+                // Se aceptan las dos formas del nombre porque el JSON lo escribe la
+                // app y "Fixed Asset" es como lo llama el enum de BC.
+                'FIXEDASSET', 'FIXED ASSET':
+                    if InsertFixedAssetLine(orderNo, lastLineNo, JObj, idx, skippedMsg, warnMsg) then
+                        otherCount += 1
+                    else
+                        skippedCount += 1;
                 else
-                    Error('Línea %1: "type" desconocido (''%2''). Use "Item" o "Charge".', idx, lineType);
+                    Error('Línea %1: "type" desconocido (''%2''). Use "Item", "Resource", "Fixed Asset" o "Charge".', idx, lineType);
             end;
         end;
 
-        exit(StrSubstNo('Pedido %1 reescrito. Eliminadas %2 línea(s) previa(s); creadas %3 (%4 ítem, %5 cargo).%6%7',
-            orderNo, deletedCount, itemCount + chargeCount, itemCount, chargeCount,
+        exit(StrSubstNo('Pedido %1 reescrito. Eliminadas %2 línea(s) previa(s); creadas %3 (%4 ítem, %5 cargo, %6 recurso/activo).%7%8',
+            orderNo, deletedCount, itemCount + chargeCount + otherCount, itemCount, chargeCount, otherCount,
             SkippedText(skippedCount, skippedMsg), WarnText(warnMsg)));
     end;
 
@@ -1277,6 +1302,188 @@ codeunit 50230 "Adelante PO Actions"
         exit(true);
     end;
 
+    /// <summary>
+    /// Inserta una línea de RECURSO (Purchase Line Type::Resource): un servicio o mano
+    /// de obra del catálogo de recursos. No entra a inventario, así que NO lleva
+    /// almacén ni variante — BC solo acepta esos campos en líneas de artículo.
+    ///
+    /// Sí puede ir contra una OBRA: BC acepta Job No. + Job Task No. en las líneas de
+    /// recurso, y es el caso normal (un alquiler de maquinaria se carga al proyecto).
+    /// La unidad se manda solo si el recurso la tiene registrada, por lo mismo que en
+    /// InsertItemLine: una unidad que no existe haría fallar la reescritura completa,
+    /// que es todo-o-nada.
+    /// </summary>
+    local procedure InsertResourceLine(orderNo: Code[20]; lineNo: Integer; JObj: JsonObject; idx: Integer; var skippedMsg: Text): Boolean
+    var
+        PurchLine: Record "Purchase Line";
+        ResUOM: Record "Resource Unit of Measure";
+        Job: Record Job;
+        JobTask: Record "Job Task";
+        v: JsonToken;
+        resourceNo: Code[20];
+        uomCode: Code[10];
+        jobNo: Code[20];
+        taskNo: Code[20];
+        ccCode: Code[20];
+        ccValue: Code[20];
+        description: Text[100];
+        qty: Decimal;
+        directUnitCost: Decimal;
+        lineDiscPct: Decimal;
+        hasCost: Boolean;
+        warnDummy: Text;
+    begin
+        resourceNo := CopyStr(GetJsonText(JObj, 'itemNo'), 1, MaxStrLen(resourceNo));
+        if resourceNo = '' then
+            Error('Línea %1 (Resource): falta "itemNo" (el N.º del recurso).', idx);
+        qty := GetJsonDec(JObj, 'quantity');
+        if qty <= 0 then begin
+            skippedMsg += StrSubstNo(' [Línea %1 (Resource %2): quantity<=0]', idx, resourceNo);
+            exit(false);
+        end;
+
+        uomCode := CopyStr(GetJsonText(JObj, 'unitOfMeasureCode'), 1, MaxStrLen(uomCode));
+        jobNo := CopyStr(GetJsonText(JObj, 'jobNo'), 1, MaxStrLen(jobNo));
+        taskNo := CopyStr(GetJsonText(JObj, 'taskNo'), 1, MaxStrLen(taskNo));
+        ccCode := CopyStr(GetJsonText(JObj, 'ccCode'), 1, MaxStrLen(ccCode));
+        ccValue := CopyStr(GetJsonText(JObj, 'ccValue'), 1, MaxStrLen(ccValue));
+        description := CopyStr(GetJsonText(JObj, 'description'), 1, MaxStrLen(description));
+        lineDiscPct := GetJsonDec(JObj, 'lineDiscountPct');
+        hasCost := JObj.Get('directUnitCost', v);
+        if hasCost then
+            if v.AsValue().IsNull() then hasCost := false else directUnitCost := v.AsValue().AsDecimal();
+
+        PurchLine.Init();
+        PurchLine."Document Type" := PurchLine."Document Type"::Order;
+        PurchLine."Document No." := orderNo;
+        PurchLine."Line No." := lineNo;
+        PurchLine.Insert(true);
+        PurchLine.Validate(Type, PurchLine.Type::Resource);
+        PurchLine.Validate("No.", resourceNo);
+        // Antes de Quantity y del costo: cambiar la unidad recalcula los dos.
+        if uomCode <> '' then
+            if ResUOM.Get(resourceNo, uomCode) then
+                PurchLine.Validate("Unit of Measure Code", uomCode);
+        // La obra ANTES de la cantidad, igual que en la línea de artículo: BC calcula
+        // las cantidades del proyecto al validarla.
+        if (jobNo <> '') and Job.Get(jobNo) then begin
+            PurchLine.Validate("Job No.", jobNo);
+            if (taskNo <> '') and JobTask.Get(jobNo, taskNo) then
+                PurchLine.Validate("Job Task No.", taskNo);
+        end;
+        PurchLine.Validate(Quantity, qty);
+        if hasCost then
+            PurchLine.Validate("Direct Unit Cost", directUnitCost);
+        if lineDiscPct <> 0 then
+            PurchLine.Validate("Line Discount %", lineDiscPct);
+        // La descripción del catálogo alcanza; solo se pisa si la app manda una.
+        if description <> '' then
+            PurchLine.Validate(Description, description);
+        PurchLine.Modify(true);
+        // El centro de costo va al final y por el mismo camino que el artículo: es la
+        // dimensión que dispara el workflow de aprobación.
+        AplicarDimension(PurchLine, ccCode, ccValue, idx, resourceNo, warnDummy);
+        exit(true);
+    end;
+
+    /// <summary>
+    /// Inserta una línea de ACTIVO FIJO (Purchase Line Type::"Fixed Asset"): la compra
+    /// se capitaliza contra el activo. NO lleva almacén, ni variante, ni unidad, ni
+    /// obra — BC no acepta Job No. en estas líneas, el costo lo lleva el libro de
+    /// depreciación.
+    ///
+    /// Lo que BC SÍ exige y no es evidente: "FA Posting Type" y "Depreciation Book
+    /// Code". Al validar el N.º, BC pone el libro predeterminado de la config. de
+    /// activos fijos; si esa config. está vacía, el pedido se crea y REVIENTA al
+    /// registrarlo. Acá se completa el tipo de registro (Adquisición) y, si el libro
+    /// quedó en blanco, se AVISA en vez de dejar la bomba armada para Bodega.
+    /// </summary>
+    local procedure InsertFixedAssetLine(orderNo: Code[20]; lineNo: Integer; JObj: JsonObject; idx: Integer; var skippedMsg: Text; var warnMsg: Text): Boolean
+    var
+        PurchLine: Record "Purchase Line";
+        v: JsonToken;
+        faNo: Code[20];
+        ccCode: Code[20];
+        ccValue: Code[20];
+        description: Text[100];
+        qty: Decimal;
+        directUnitCost: Decimal;
+        lineDiscPct: Decimal;
+        hasCost: Boolean;
+        warnDummy: Text;
+    begin
+        faNo := CopyStr(GetJsonText(JObj, 'itemNo'), 1, MaxStrLen(faNo));
+        if faNo = '' then
+            Error('Línea %1 (Fixed Asset): falta "itemNo" (el N.º del activo fijo).', idx);
+        qty := GetJsonDec(JObj, 'quantity');
+        if qty <= 0 then begin
+            skippedMsg += StrSubstNo(' [Línea %1 (Fixed Asset %2): quantity<=0]', idx, faNo);
+            exit(false);
+        end;
+
+        ccCode := CopyStr(GetJsonText(JObj, 'ccCode'), 1, MaxStrLen(ccCode));
+        ccValue := CopyStr(GetJsonText(JObj, 'ccValue'), 1, MaxStrLen(ccValue));
+        description := CopyStr(GetJsonText(JObj, 'description'), 1, MaxStrLen(description));
+        lineDiscPct := GetJsonDec(JObj, 'lineDiscountPct');
+        hasCost := JObj.Get('directUnitCost', v);
+        if hasCost then
+            if v.AsValue().IsNull() then hasCost := false else directUnitCost := v.AsValue().AsDecimal();
+
+        PurchLine.Init();
+        PurchLine."Document Type" := PurchLine."Document Type"::Order;
+        PurchLine."Document No." := orderNo;
+        PurchLine."Line No." := lineNo;
+        PurchLine.Insert(true);
+        PurchLine.Validate(Type, PurchLine.Type::"Fixed Asset");
+        PurchLine.Validate("No.", faNo);
+        // Adquisición: es lo que significa comprarle algo a un proveedor contra un
+        // activo. Solo se pone si BC lo dejó en blanco.
+        if PurchLine."FA Posting Type" = PurchLine."FA Posting Type"::" " then
+            PurchLine.Validate("FA Posting Type", PurchLine."FA Posting Type"::"Acquisition Cost");
+        PurchLine.Validate(Quantity, qty);
+        if hasCost then
+            PurchLine.Validate("Direct Unit Cost", directUnitCost);
+        if lineDiscPct <> 0 then
+            PurchLine.Validate("Line Discount %", lineDiscPct);
+        if description <> '' then
+            PurchLine.Validate(Description, description);
+        PurchLine.Modify(true);
+        AplicarDimension(PurchLine, ccCode, ccValue, idx, faNo, warnDummy);
+        // El libro de depreciación no se inventa: si la config. de activos fijos no
+        // tiene uno predeterminado, se dice ACÁ, con el pedido recién creado y
+        // Proveeduría todavía en la pantalla. Sin esto, el error aparece al
+        // registrar, con el proveedor esperando que le firmen la factura.
+        if PurchLine."Depreciation Book Code" = '' then
+            warnMsg += StrSubstNo(' [Línea %1 (Activo fijo %2): sin libro de depreciación. Business Central no va a poder registrarla: definí el libro predeterminado en la configuración de activos fijos, o ponelo a mano en la línea del pedido.]', idx, faNo);
+        exit(true);
+    end;
+
+    /// <summary>
+    /// El TIPO de línea que trae una entrada del linesJson de los Post*. El campo es
+    /// OPCIONAL y por omisión es Artículo: así era todo antes de que una compra
+    /// directa pudiera llevar un recurso o un activo fijo, y una app vieja (o un
+    /// linesJson guardado) sigue funcionando igual.
+    ///
+    /// Hace falta porque el match de los Post* es por N.º, y el N.º solo no alcanza:
+    /// un recurso "MO-0001" y un artículo "MO-0001" son dos líneas distintas del
+    /// pedido. Sin el tipo, buscar solo entre las de artículo hacía que una línea de
+    /// servicio "no calzara" y el registro se abortara entero.
+    /// </summary>
+    local procedure TipoDeLineaPedida(JObj: JsonObject): Enum "Purchase Line Type"
+    var
+        t: Text;
+    begin
+        t := UpperCase(DelChr(GetJsonText(JObj, 'type'), '<>', ' '));
+        case t of
+            'RESOURCE', 'RECURSO':
+                exit(Enum::"Purchase Line Type"::Resource);
+            'FIXEDASSET', 'FIXED ASSET', 'ACTIVOFIJO':
+                exit(Enum::"Purchase Line Type"::"Fixed Asset");
+            else
+                exit(Enum::"Purchase Line Type"::Item);
+        end;
+    end;
+
     local procedure GetJsonText(JObj: JsonObject; keyName: Text): Text
     var
         v: JsonToken;
@@ -1305,17 +1512,29 @@ codeunit 50230 "Adelante PO Actions"
     /// modo: 0 = recibir (mira Outstanding Quantity) · 1 = facturar lo recibido
     /// (mira Qty. Rcd. Not Invoiced).
     /// </summary>
-    local procedure MotivoNoCalza(orderNo: Code[20]; itemNo: Code[20]; variantCode: Code[10]; applyVariant: Boolean; qty: Decimal; modo: Integer): Text
+    local procedure MotivoNoCalza(orderNo: Code[20]; tipoLinea: Enum "Purchase Line Type"; itemNo: Code[20]; variantCode: Code[10]; applyVariant: Boolean; qty: Decimal; modo: Integer): Text
     var
         PurchLine: Record "Purchase Line";
         variantes: Text;
         saldo: Decimal;
         hayItem: Boolean;
+        queEs: Text;
     begin
+        // Cómo nombrar lo que no calzó. Decirle "artículo" a un servicio manda a
+        // buscarlo al catálogo equivocado: el mensaje lo lee Bodega, en el momento en
+        // que el registro se acaba de abortar.
+        case tipoLinea of
+            tipoLinea::Resource:
+                queEs := 'recurso';
+            tipoLinea::"Fixed Asset":
+                queEs := 'activo fijo';
+            else
+                queEs := 'artículo';
+        end;
         PurchLine.Reset();
         PurchLine.SetRange("Document Type", PurchLine."Document Type"::Order);
         PurchLine.SetRange("Document No.", orderNo);
-        PurchLine.SetRange(Type, PurchLine.Type::Item);
+        PurchLine.SetRange(Type, tipoLinea);
         PurchLine.SetRange("No.", itemNo);
         if PurchLine.FindSet() then
             repeat
@@ -1331,7 +1550,7 @@ codeunit 50230 "Adelante PO Actions"
             until PurchLine.Next() = 0;
 
         if not hayItem then
-            exit(StrSubstNo(' [%1: el pedido no tiene ninguna línea de este artículo]', itemNo));
+            exit(StrSubstNo(' [%1: el pedido no tiene ninguna línea de %2 con ese N.º]', itemNo, queEs));
         if applyVariant then begin
             PurchLine.SetRange("Variant Code", variantCode);
             if PurchLine.IsEmpty() then
