@@ -758,9 +758,18 @@ codeunit 50230 "Adelante PO Actions"
     ///   { "type":"Item", "itemNo":"M01-0147", "variantCode":"", "locationCode":"ALM-GRAL",
     ///     "quantity":6, "directUnitCost":1100, "lineDiscountPct":0, "jobNo":"VB-5.01", "taskNo":"1000",
     ///     "ccCode":"CC", "ccValue":"VB-5.01", "maquinaNo":"MAQ00017" },
+    ///   { "type":"Resource", "itemNo":"MO-0001", "locationCode":"ALM-GRAL",
+    ///     "quantity":3, "directUnitCost":45000, "unitOfMeasureCode":"DIA",
+    ///     "jobNo":"VB-5.01", "taskNo":"1000", "ccCode":"CC", "ccValue":"VB-5.01" },
+    ///   { "type":"Fixed Asset", "itemNo":"AF-0190", "locationCode":"ALM-GRAL",
+    ///     "quantity":1, "directUnitCost":1570.8, "ccCode":"CC", "ccValue":"VB-5.01" },
     ///   { "type":"Charge", "itemChargeNo":"FLETE", "description":"FLETE / TRANSPORTE",
     ///     "quantity":1, "directUnitCost":45000, "chargeMethod":"Amount" }
     /// ] }
+    ///
+    /// "locationCode" vale para CUALQUIER tipo de línea, no solo para el artículo: en
+    /// una de recurso o de activo fijo no manda nada a bodega, pero es una de las
+    /// fuentes de la dimensión de centro de costo.
     ///
     /// Guardas server-side (no dependen de la UI de la app):
     ///  · El pedido debe estar ABIERTO. Si está Lanzado u otro estado -> Error claro, sin reemplazo.
@@ -1371,6 +1380,7 @@ codeunit 50230 "Adelante PO Actions"
         v: JsonToken;
         resourceNo: Code[20];
         uomCode: Code[10];
+        locationCode: Code[10];
         jobNo: Code[20];
         taskNo: Code[20];
         ccCode: Code[20];
@@ -1392,6 +1402,7 @@ codeunit 50230 "Adelante PO Actions"
         end;
 
         uomCode := CopyStr(GetJsonText(JObj, 'unitOfMeasureCode'), 1, MaxStrLen(uomCode));
+        locationCode := CopyStr(GetJsonText(JObj, 'locationCode'), 1, MaxStrLen(locationCode));
         jobNo := CopyStr(GetJsonText(JObj, 'jobNo'), 1, MaxStrLen(jobNo));
         taskNo := CopyStr(GetJsonText(JObj, 'taskNo'), 1, MaxStrLen(taskNo));
         ccCode := CopyStr(GetJsonText(JObj, 'ccCode'), 1, MaxStrLen(ccCode));
@@ -1414,6 +1425,12 @@ codeunit 50230 "Adelante PO Actions"
         if uomCode <> '' then
             if ResUOM.Get(resourceNo, uomCode) then
                 PurchLine.Validate("Unit of Measure Code", uomCode);
+        // El ALMACÉN va igual que en la línea de artículo. No manda nada a bodega
+        // (bin, WMS y recepción de almacén están detrás de Type::Item), pero es una
+        // de las fuentes de dimensión por defecto de la línea, así que sin él la
+        // línea se queda sin el centro de costo que el almacén amarra.
+        if locationCode <> '' then
+            PurchLine.Validate("Location Code", locationCode);
         // La obra ANTES de la cantidad, igual que en la línea de artículo: BC calcula
         // las cantidades del proyecto al validarla.
         if (jobNo <> '') and Job.Get(jobNo) then begin
@@ -1433,18 +1450,28 @@ codeunit 50230 "Adelante PO Actions"
         // (que hace Init() de la línea) y ANTES del Modify: acá el Modify es el último
         // de la procedure y lo que se ponga después no se guarda.
         AplicarMaquina(PurchLine, maquinaNo, idx, resourceNo, warnMsg);
-        PurchLine.Modify(true);
-        // El centro de costo va al final y por el mismo camino que el artículo: es la
-        // dimensión que dispara el workflow de aprobación.
+        // El centro de costo, por el mismo camino que el artículo: es la dimensión que
+        // dispara el workflow de aprobación. Va DESPUÉS del recurso, del almacén y de
+        // la obra (los tres le ponen dimensiones por defecto y lo que manda la app
+        // tiene que ganar) y ANTES del Modify: AplicarDimension solo valida sobre el
+        // registro en memoria, así que llamarla después del Modify —como estaba— la
+        // escribía y la tiraba. El CC de las líneas de recurso nunca llegó a BC.
         AplicarDimension(PurchLine, ccCode, ccValue, idx, resourceNo, warnMsg);
+        PurchLine.Modify(true);
         exit(true);
     end;
 
     /// <summary>
     /// Inserta una línea de ACTIVO FIJO (Purchase Line Type::"Fixed Asset"): la compra
-    /// se capitaliza contra el activo. NO lleva almacén, ni variante, ni unidad, ni
-    /// obra — BC no acepta Job No. en estas líneas, el costo lo lleva el libro de
-    /// depreciación.
+    /// se capitaliza contra el activo. NO lleva variante, ni unidad, ni obra — BC no
+    /// acepta Job No. en estas líneas, el costo lo lleva el libro de depreciación.
+    ///
+    /// El ALMACÉN sí: acá decía que no y era falso. En la Base Application el campo
+    /// "Location Code" de la línea de compra no tiene ninguna atadura al tipo, y de
+    /// hecho BC mismo le copia el del encabezado a cualquier línea (InitHeaderDefaults).
+    /// No hace que el activo entre a inventario —eso está detrás de Type::Item— pero
+    /// es una de las fuentes de dimensión por defecto, así que sin almacén la compra
+    /// del activo queda sin centro de costo.
     ///
     /// Lo que BC SÍ exige y no es evidente: "FA Posting Type" y "Depreciation Book
     /// Code". Al validar el N.º, BC pone el libro predeterminado de la config. de
@@ -1457,6 +1484,7 @@ codeunit 50230 "Adelante PO Actions"
         PurchLine: Record "Purchase Line";
         v: JsonToken;
         faNo: Code[20];
+        locationCode: Code[10];
         ccCode: Code[20];
         ccValue: Code[20];
         description: Text[100];
@@ -1464,7 +1492,6 @@ codeunit 50230 "Adelante PO Actions"
         directUnitCost: Decimal;
         lineDiscPct: Decimal;
         hasCost: Boolean;
-        warnDummy: Text;
     begin
         faNo := CopyStr(GetJsonText(JObj, 'itemNo'), 1, MaxStrLen(faNo));
         if faNo = '' then
@@ -1475,6 +1502,7 @@ codeunit 50230 "Adelante PO Actions"
             exit(false);
         end;
 
+        locationCode := CopyStr(GetJsonText(JObj, 'locationCode'), 1, MaxStrLen(locationCode));
         ccCode := CopyStr(GetJsonText(JObj, 'ccCode'), 1, MaxStrLen(ccCode));
         ccValue := CopyStr(GetJsonText(JObj, 'ccValue'), 1, MaxStrLen(ccValue));
         description := CopyStr(GetJsonText(JObj, 'description'), 1, MaxStrLen(description));
@@ -1490,6 +1518,8 @@ codeunit 50230 "Adelante PO Actions"
         PurchLine.Insert(true);
         PurchLine.Validate(Type, PurchLine.Type::"Fixed Asset");
         PurchLine.Validate("No.", faNo);
+        if locationCode <> '' then
+            PurchLine.Validate("Location Code", locationCode);
         // Adquisición: es lo que significa comprarle algo a un proveedor contra un
         // activo. Solo se pone si BC lo dejó en blanco.
         if PurchLine."FA Posting Type" = PurchLine."FA Posting Type"::" " then
@@ -1501,8 +1531,12 @@ codeunit 50230 "Adelante PO Actions"
             PurchLine.Validate("Line Discount %", lineDiscPct);
         if description <> '' then
             PurchLine.Validate(Description, description);
+        // ANTES del Modify y con warnMsg, no con una variable que nadie lee: como
+        // estaba, el centro de costo se validaba sobre el registro en memoria después
+        // de guardarlo (o sea, se tiraba) y sus avisos se descartaban. El CC de las
+        // líneas de activo fijo nunca llegó a BC y nadie se enteraba.
+        AplicarDimension(PurchLine, ccCode, ccValue, idx, faNo, warnMsg);
         PurchLine.Modify(true);
-        AplicarDimension(PurchLine, ccCode, ccValue, idx, faNo, warnDummy);
         // El libro de depreciación no se inventa: si la config. de activos fijos no
         // tiene uno predeterminado, se dice ACÁ, con el pedido recién creado y
         // Proveeduría todavía en la pantalla. Sin esto, el error aparece al
