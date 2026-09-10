@@ -757,7 +757,7 @@ codeunit 50230 "Adelante PO Actions"
     /// linesJson = { "lines": [
     ///   { "type":"Item", "itemNo":"M01-0147", "variantCode":"", "locationCode":"ALM-GRAL",
     ///     "quantity":6, "directUnitCost":1100, "lineDiscountPct":0, "jobNo":"VB-5.01", "taskNo":"1000",
-    ///     "ccCode":"CC", "ccValue":"VB-5.01" },
+    ///     "ccCode":"CC", "ccValue":"VB-5.01", "maquinaNo":"MAQ00017" },
     ///   { "type":"Charge", "itemChargeNo":"FLETE", "description":"FLETE / TRANSPORTE",
     ///     "quantity":1, "directUnitCost":45000, "chargeMethod":"Amount" }
     /// ] }
@@ -767,8 +767,12 @@ codeunit 50230 "Adelante PO Actions"
     ///  · Falla si hay recepciones registradas o alguna línea con cantidad ya recibida.
     ///  · Todo o nada: cualquier línea inválida lanza Error y revierte TODO (no queda a medias).
     ///  · Excepción a lo anterior: los códigos que solo son "decoración" de la línea (unidad de
-    ///    medida, obra, tarea) se aplican únicamente si existen en BC. Un código inexistente ahí
-    ///    no tumba el pedido entero: se crea la línea sin ese dato y se reporta en "Avisos".
+    ///    medida, obra, tarea, máquina) se aplican únicamente si existen en BC. Un código
+    ///    inexistente ahí no tumba el pedido entero: se crea la línea sin ese dato y se reporta
+    ///    en "Avisos".
+    ///  · "maquinaNo" es el N.º del parque de maquinaria (Purchase Line."GomEqp Machine No."):
+    ///    a qué EQUIPO va el repuesto. Se acepta en las líneas de artículo y de recurso, que
+    ///    son las que la app manda con máquina.
     ///  · El "Direct Unit Cost" del JSON se valida al final, para que gane sobre el costo del maestro.
     /// El reparto del cargo (Item Charge) se hace al lanzar/registrar (AsignarCargosProducto),
     /// igual que en el resto del flujo; aquí solo se (re)crea la línea del cargo. "chargeMethod"
@@ -864,7 +868,7 @@ codeunit 50230 "Adelante PO Actions"
                 // de recursos (alquiler de maquinaria, servicio de corte) o la compra
                 // de un activo fijo. Es la MISMA línea de compra con otro Type.
                 'RESOURCE':
-                    if InsertResourceLine(orderNo, lastLineNo, JObj, idx, skippedMsg) then
+                    if InsertResourceLine(orderNo, lastLineNo, JObj, idx, skippedMsg, warnMsg) then
                         otherCount += 1
                     else
                         skippedCount += 1;
@@ -1101,7 +1105,7 @@ codeunit 50230 "Adelante PO Actions"
 
     /// <summary>Crea una línea de artículo. Devuelve false y reporta si se omite (cantidad 0 o negativa);
     /// cualquier otro problema lanza Error para forzar el rollback total. En warnMsg acumula lo que
-    /// se creó pero incompleto (obra o tarea inexistente), que se reporta sin abortar.</summary>
+    /// se creó pero incompleto (obra, tarea o máquina inexistente), que se reporta sin abortar.</summary>
     local procedure InsertItemLine(orderNo: Code[20]; lineNo: Integer; JObj: JsonObject; idx: Integer; var skippedMsg: Text; var warnMsg: Text): Boolean
     var
         PurchLine: Record "Purchase Line";
@@ -1117,6 +1121,7 @@ codeunit 50230 "Adelante PO Actions"
         taskNo: Code[20];
         ccCode: Code[20];
         ccValue: Code[20];
+        maquinaNo: Code[20];
         qty: Decimal;
         directUnitCost: Decimal;
         lineDiscPct: Decimal;
@@ -1138,6 +1143,7 @@ codeunit 50230 "Adelante PO Actions"
         taskNo := CopyStr(GetJsonText(JObj, 'taskNo'), 1, MaxStrLen(taskNo));
         ccCode := CopyStr(GetJsonText(JObj, 'ccCode'), 1, MaxStrLen(ccCode));
         ccValue := CopyStr(GetJsonText(JObj, 'ccValue'), 1, MaxStrLen(ccValue));
+        maquinaNo := CopyStr(GetJsonText(JObj, 'maquinaNo'), 1, MaxStrLen(maquinaNo));
         lineDiscPct := GetJsonDec(JObj, 'lineDiscountPct');
         hasCost := JObj.Get('directUnitCost', v);
         if hasCost then
@@ -1199,8 +1205,47 @@ codeunit 50230 "Adelante PO Actions"
             PurchLine.Validate("Line Discount %", lineDiscPct);
         if hasCost then
             PurchLine.Validate("Direct Unit Cost", directUnitCost); // al final: el costo negociado gana sobre el del maestro
+        // La máquina va DE ÚLTIMO, después del ítem y de la cantidad, y no es
+        // cosmético: validar el "No." hace un Init() de la línea (BC la rearma desde
+        // el maestro del artículo), así que un N.º de máquina puesto antes se
+        // borraría en silencio. Ver AplicarMaquina.
+        AplicarMaquina(PurchLine, maquinaNo, idx, itemNo, warnMsg);
         PurchLine.Modify(true);
         exit(true);
+    end;
+
+    /// <summary>
+    /// Pone el N.º de MÁQUINA en la línea de compra (Purchase Line."GomEqp Machine No.",
+    /// el parque de Goom Parque Maquinaria).
+    ///
+    /// Para qué: un repuesto no se compra "para la bodega", se compra PARA UNA MÁQUINA.
+    /// Ese N.º es lo que le da dueño al gasto en BC — sin él el costo del repuesto entra
+    /// al inventario y nadie puede decir después cuánto lleva gastada la excavadora.
+    /// Cada línea puede ir a una máquina distinta: la app parte una línea en varias
+    /// cuando el mismo repuesto va a dos equipos.
+    ///
+    /// Se llama con la línea ya armada (ver el comentario de la llamada): validar el
+    /// "No." del artículo hace Init() de la línea y se llevaría este campo con él.
+    ///
+    /// No aborta la reescritura (que es todo-o-nada): un N.º que no está en el parque se
+    /// reporta en "Avisos" y la línea queda sin máquina. Mismo criterio que la unidad de
+    /// medida, la obra y el centro de costo — perder el pedido entero por un código malo
+    /// es peor, y el N.º sale del catálogo de BC (page 50248 "machines"), así que si no
+    /// existe es que la máquina se dio de baja después de armar la orden.
+    /// </summary>
+    local procedure AplicarMaquina(var PurchLine: Record "Purchase Line"; maquinaNo: Code[20]; idx: Integer; noLinea: Code[20]; var warnMsg: Text)
+    var
+        Machine: Record "GomEqp Machine";
+    begin
+        // Vacío = la app no mandó máquina (línea que no es de repuesto). Escribir ''
+        // sería BORRAR, no "dejarlo como está".
+        if maquinaNo = '' then
+            exit;
+        if not Machine.Get(maquinaNo) then begin
+            warnMsg += StrSubstNo(' [Línea %1 (%2): la máquina ''%3'' no existe en el parque de BC; línea creada sin máquina]', idx, noLinea, maquinaNo);
+            exit;
+        end;
+        PurchLine.Validate("GomEqp Machine No.", maquinaNo);
     end;
 
     /// <summary>
@@ -1312,8 +1357,12 @@ codeunit 50230 "Adelante PO Actions"
     /// La unidad se manda solo si el recurso la tiene registrada, por lo mismo que en
     /// InsertItemLine: una unidad que no existe haría fallar la reescritura completa,
     /// que es todo-o-nada.
+    ///
+    /// También puede llevar MÁQUINA: el torno o la soldadura que se le pagó a un
+    /// tercero es gasto de esa máquina igual que un repuesto, y en BC es la misma línea
+    /// de compra con otro Type.
     /// </summary>
-    local procedure InsertResourceLine(orderNo: Code[20]; lineNo: Integer; JObj: JsonObject; idx: Integer; var skippedMsg: Text): Boolean
+    local procedure InsertResourceLine(orderNo: Code[20]; lineNo: Integer; JObj: JsonObject; idx: Integer; var skippedMsg: Text; var warnMsg: Text): Boolean
     var
         PurchLine: Record "Purchase Line";
         ResUOM: Record "Resource Unit of Measure";
@@ -1326,12 +1375,12 @@ codeunit 50230 "Adelante PO Actions"
         taskNo: Code[20];
         ccCode: Code[20];
         ccValue: Code[20];
+        maquinaNo: Code[20];
         description: Text[100];
         qty: Decimal;
         directUnitCost: Decimal;
         lineDiscPct: Decimal;
         hasCost: Boolean;
-        warnDummy: Text;
     begin
         resourceNo := CopyStr(GetJsonText(JObj, 'itemNo'), 1, MaxStrLen(resourceNo));
         if resourceNo = '' then
@@ -1347,6 +1396,7 @@ codeunit 50230 "Adelante PO Actions"
         taskNo := CopyStr(GetJsonText(JObj, 'taskNo'), 1, MaxStrLen(taskNo));
         ccCode := CopyStr(GetJsonText(JObj, 'ccCode'), 1, MaxStrLen(ccCode));
         ccValue := CopyStr(GetJsonText(JObj, 'ccValue'), 1, MaxStrLen(ccValue));
+        maquinaNo := CopyStr(GetJsonText(JObj, 'maquinaNo'), 1, MaxStrLen(maquinaNo));
         description := CopyStr(GetJsonText(JObj, 'description'), 1, MaxStrLen(description));
         lineDiscPct := GetJsonDec(JObj, 'lineDiscountPct');
         hasCost := JObj.Get('directUnitCost', v);
@@ -1379,10 +1429,14 @@ codeunit 50230 "Adelante PO Actions"
         // La descripción del catálogo alcanza; solo se pisa si la app manda una.
         if description <> '' then
             PurchLine.Validate(Description, description);
+        // La máquina, igual que en la línea de artículo, después de validar el "No."
+        // (que hace Init() de la línea) y ANTES del Modify: acá el Modify es el último
+        // de la procedure y lo que se ponga después no se guarda.
+        AplicarMaquina(PurchLine, maquinaNo, idx, resourceNo, warnMsg);
         PurchLine.Modify(true);
         // El centro de costo va al final y por el mismo camino que el artículo: es la
         // dimensión que dispara el workflow de aprobación.
-        AplicarDimension(PurchLine, ccCode, ccValue, idx, resourceNo, warnDummy);
+        AplicarDimension(PurchLine, ccCode, ccValue, idx, resourceNo, warnMsg);
         exit(true);
     end;
 
