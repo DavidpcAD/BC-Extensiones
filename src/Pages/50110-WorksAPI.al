@@ -31,6 +31,14 @@ page 50110 "GJW Works API"
                 field(filterVersionCode; Rec."Filter Version Code") { Caption = 'Filter Version Code'; }
                 field(areaProrrateada; Rec."Area Prorrateada") { Caption = 'Area Prorrateada'; } // escribible (PATCH)
 
+                // Tasas de la obra (pestaña Adicionales de la ficha) — escribibles (PATCH).
+                // Los booleanos van ANTES de los porcentajes: si BC valida el % contra
+                // "usar tasa propia", el flag ya quedo puesto cuando llega el numero.
+                field(useCustomTax; Rec."Use Custom Tax") { Caption = 'Use Custom Tax'; }
+                field(taxPcnt; Rec."Tax Pcnt.") { Caption = 'Tax Pcnt.'; }
+                field(useCustomAfterSalesTax; Rec."Use Custom After-sales Tax") { Caption = 'Use Custom After-sales Tax'; }
+                field(afterSalesTaxPcnt; Rec."After-sales Tax Pcnt.") { Caption = 'After-sales Tax Pcnt.'; }
+
                 // Importes (los mismos que ves en el Factbox)
                 field(salesLineAmount; Rec."Sales Line Amount") { Caption = 'Sales Line Amount'; Editable = false; }
                 field(costLineAmount; Rec."Cost Line Amount") { Caption = 'Cost Line Amount'; Editable = false; }

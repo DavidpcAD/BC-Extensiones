@@ -47,6 +47,7 @@ page 50162 "GJW Register Batch Trigger API"
         ItemJnlLine.SetRange("Journal Template Name", Rec."Journal Template Name");
         ItemJnlLine.SetRange("Journal Batch Name", Rec.Name);
 
+
         if not ItemJnlLine.FindSet() then begin
             PostingResult := 'ERROR: No hay líneas para registrar';
             Error(PostingResult);

@@ -42,6 +42,8 @@ codeunit 50199 "GJW Purchase Post Processor"
     procedure PreviewPurchaseOrder(RequestJSON: Text): Text
     var
         PreviewHandler: Codeunit "GJW Purch Posting Preview";
+        TempSnapHeader: Record "Purchase Header" temporary;
+        TempSnapLine: Record "Purchase Line" temporary;
         RequestObj: JsonObject;
         ResponseObj: JsonObject;
         EntriesArray: JsonArray;
@@ -60,10 +62,12 @@ codeunit 50199 "GJW Purchase Post Processor"
         // Token calculado sobre el estado ACTUAL (antes de aplicar cambios).
         Token := ComputeStateToken(OrderNo, RequestObj);
 
-        // TryApplyAndPreview SIEMPRE termina con un error deliberado para hacer
-        // rollback de las modificaciones (la previa no debe persistir nada).
-        // Los asientos capturados viven en memoria (PreviewHandler) y sobreviven al rollback.
-        if not TryApplyAndPreview(RequestObj, PreviewHandler) then begin
+        // TryApplyAndPreview SIEMPRE termina con un error deliberado. OJO: ese error lo
+        // atrapa el [TryFunction], y un TryFunction NO revierte lo que ya se escribió en la
+        // base (eso sólo lo hace Codeunit.Run). Por eso la previa se deshace a mano: foto
+        // del documento antes de tocarlo y RestoreDocument al final, pase lo que pase.
+        // Los asientos capturados viven en memoria (PreviewHandler) y sobreviven al corte.
+        if not TryApplyAndPreview(RequestObj, PreviewHandler, TempSnapHeader, TempSnapLine) then begin
             if TryUnbindPreview(PreviewHandler) then;
 
             if PreviewHandler.HasCapturedEntries() then begin
@@ -81,21 +85,29 @@ codeunit 50199 "GJW Purchase Post Processor"
                 ResponseObj.Add('error', ErrTxt);
             end;
         end else begin
-            // No debería ocurrir: TryApplyAndPreview siempre fuerza rollback vía Error.
+            // No debería ocurrir: TryApplyAndPreview siempre corta con Error.
             if TryUnbindPreview(PreviewHandler) then;
             ResponseObj.Add('preview', false);
-            ResponseObj.Add('error', 'No se pudo generar la vista previa (sin rollback).');
+            ResponseObj.Add('error', 'No se pudo generar la vista previa (no cortó en el Error).');
         end;
+
+        // Haya salido bien o mal: el pedido vuelve a como estaba antes de la previa.
+        RestoreDocument(TempSnapHeader, TempSnapLine);
 
         exit(FormatJsonOutput(ResponseObj));
     end;
 
     [TryFunction]
-    local procedure TryApplyAndPreview(var RequestObj: JsonObject; var PreviewHandler: Codeunit "GJW Purch Posting Preview")
+    local procedure TryApplyAndPreview(var RequestObj: JsonObject; var PreviewHandler: Codeunit "GJW Purch Posting Preview"; var TempSnapHeader: Record "Purchase Header" temporary; var TempSnapLine: Record "Purchase Line" temporary)
     var
         PurchHeader: Record "Purchase Header";
     begin
         LoadAndValidateHeader(RequestObj, PurchHeader);
+
+        // Foto ANTES de escribir nada: lo que venga después queda grabado aunque esto
+        // termine en error (ver el comentario de PreviewPurchaseOrder).
+        SnapshotDocument(PurchHeader, TempSnapHeader, TempSnapLine);
+
         ApplyRequestToDocument(RequestObj, PurchHeader);
 
         PurchHeader.Receive := true;
@@ -106,7 +118,8 @@ codeunit 50199 "GJW Purchase Post Processor"
         PreviewHandler.RunPreview(PurchHeader);
         UnbindSubscription(PreviewHandler);
 
-        // Rollback deliberado: deshace todas las modificaciones de la previa.
+        // Corta acá: los asientos ya están capturados en memoria y el documento lo
+        // devuelve a su estado RestoreDocument, no este Error.
         Error('__PREVIEW_ROLLBACK__');
     end;
 
@@ -114,6 +127,75 @@ codeunit 50199 "GJW Purchase Post Processor"
     local procedure TryUnbindPreview(var PreviewHandler: Codeunit "GJW Purch Posting Preview")
     begin
         UnbindSubscription(PreviewHandler);
+    end;
+
+    /// <summary>Guarda en memoria el estado del pedido (encabezado + líneas) antes de que
+    /// la previa lo toque. Los registros temporales no viven en la base, así que sobreviven
+    /// a cualquier error posterior.</summary>
+    local procedure SnapshotDocument(var PurchHeader: Record "Purchase Header"; var TempSnapHeader: Record "Purchase Header" temporary; var TempSnapLine: Record "Purchase Line" temporary)
+    var
+        PurchLine: Record "Purchase Line";
+    begin
+        TempSnapHeader.Reset();
+        TempSnapHeader.DeleteAll();
+        TempSnapLine.Reset();
+        TempSnapLine.DeleteAll();
+
+        TempSnapHeader := PurchHeader;
+        TempSnapHeader.Insert();
+
+        PurchLine.SetRange("Document Type", PurchHeader."Document Type");
+        PurchLine.SetRange("Document No.", PurchHeader."No.");
+        if PurchLine.FindSet() then
+            repeat
+                TempSnapLine := PurchLine;
+                TempSnapLine.Insert();
+            until PurchLine.Next() = 0;
+    end;
+
+    /// <summary>Devuelve el pedido a la foto tomada por SnapshotDocument. Sólo toca los
+    /// campos que la previa escribe; si el snapshot está vacío (ni se llegó a cargar el
+    /// pedido) no hace nada.</summary>
+    local procedure RestoreDocument(var TempSnapHeader: Record "Purchase Header" temporary; var TempSnapLine: Record "Purchase Line" temporary)
+    var
+        PurchHeader: Record "Purchase Header";
+        PurchLine: Record "Purchase Line";
+    begin
+        TempSnapHeader.Reset();
+        if not TempSnapHeader.FindFirst() then
+            exit;
+
+        if PurchHeader.Get(TempSnapHeader."Document Type", TempSnapHeader."No.") then
+            if (PurchHeader."Vendor Invoice No." <> TempSnapHeader."Vendor Invoice No.") or
+               (PurchHeader."Document Date" <> TempSnapHeader."Document Date") or
+               (PurchHeader."Posting Date" <> TempSnapHeader."Posting Date") or
+               (PurchHeader.Receive <> TempSnapHeader.Receive) or
+               (PurchHeader.Invoice <> TempSnapHeader.Invoice)
+            then begin
+                // Asignación directa, sin Validate: esto es una restauración, no una
+                // edición; no debe disparar triggers ni el chequeo de estado del documento.
+                PurchHeader."Vendor Invoice No." := TempSnapHeader."Vendor Invoice No.";
+                PurchHeader."Document Date" := TempSnapHeader."Document Date";
+                PurchHeader."Posting Date" := TempSnapHeader."Posting Date";
+                PurchHeader.Receive := TempSnapHeader.Receive;
+                PurchHeader.Invoice := TempSnapHeader.Invoice;
+                PurchHeader.Modify();
+            end;
+
+        TempSnapLine.Reset();
+        if TempSnapLine.FindSet() then
+            repeat
+                if PurchLine.Get(TempSnapLine."Document Type", TempSnapLine."Document No.", TempSnapLine."Line No.") then
+                    if (PurchLine."Qty. to Receive" <> TempSnapLine."Qty. to Receive") or
+                       (PurchLine."Qty. to Invoice" <> TempSnapLine."Qty. to Invoice")
+                    then begin
+                        PurchLine."Qty. to Receive" := TempSnapLine."Qty. to Receive";
+                        PurchLine."Qty. to Receive (Base)" := TempSnapLine."Qty. to Receive (Base)";
+                        PurchLine."Qty. to Invoice" := TempSnapLine."Qty. to Invoice";
+                        PurchLine."Qty. to Invoice (Base)" := TempSnapLine."Qty. to Invoice (Base)";
+                        PurchLine.Modify();
+                    end;
+            until TempSnapLine.Next() = 0;
     end;
 
     // ═════════════════════════════════════════════════════════════════════════════

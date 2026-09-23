@@ -50,8 +50,10 @@ page 50106 "ConsumidoObra"
         JLSums: Dictionary of [Text, Decimal];
         VariantDescs: Dictionary of [Text, Text];
         PresupKeys: Dictionary of [Text, Boolean];
+        ExtraKeys: Dictionary of [Text, Boolean];
         tmpKey: Text;
         tmpQty: Decimal;
+        tmpNeto: Decimal;
         tmpText: Text;
         tmpParentTask: Text;
         tmpDotPos: Integer;
@@ -61,14 +63,18 @@ page 50106 "ConsumidoObra"
         BuildDecompReadAPITmp();
     end;
 
-    // Pre-agregacion: 1 sola query a Job Ledger Entry
+    // Pre-agregacion: 1 sola query a Job Ledger Entry.
+    // La VARIANTE va en la clave: BC valida el uso por item + variante, asi que
+    // agregar sin ella hace que lo consumido de una variante se reporte bajo otra
+    // y la devolucion falle con "You must post more usage of Item ... in Project".
+    // Se suman positivos y negativos: una devolucion previa resta del disponible.
     local procedure BuildJLSums()
     begin
         Clear(JLSums);
         jl.Reset();
         if jl.FindSet() then
             repeat
-                tmpKey := jl."No." + '|' + jl."Location Code" + '|' + jl."Job Task No.";
+                tmpKey := JLKey(jl."No.", jl."Variant Code", jl."Location Code", jl."Job Task No.");
                 if JLSums.ContainsKey(tmpKey) then begin
                     JLSums.Get(tmpKey, tmpQty);
                     JLSums.Set(tmpKey, tmpQty + jl.Quantity);
@@ -89,10 +95,15 @@ page 50106 "ConsumidoObra"
             until iv.Next() = 0;
     end;
 
-    local procedure GetJLQty(itemNo: Code[20]; worksNo: Code[20]; taskNo: Code[20]): Decimal
+    /// <summary>Clave unica de agregacion: item + variante + almacen + actividad.</summary>
+    local procedure JLKey(itemNo: Text; variantCode: Text; worksNo: Text; taskNo: Text): Text
     begin
-        tmpKey := itemNo + '|' + worksNo + '|' + taskNo;
-        if JLSums.Get(tmpKey, tmpQty) then
+        exit(itemNo + '|' + variantCode + '|' + worksNo + '|' + taskNo);
+    end;
+
+    local procedure GetJLQty(itemNo: Text; variantCode: Text; worksNo: Text; taskNo: Text): Decimal
+    begin
+        if JLSums.Get(JLKey(itemNo, variantCode, worksNo, taskNo), tmpQty) then
             exit(tmpQty);
         exit(0);
     end;
@@ -111,6 +122,7 @@ page 50106 "ConsumidoObra"
     begin
         Rec.DeleteAll();
         Clear(PresupKeys);
+        Clear(ExtraKeys);
 
         // 2 queries totales para pre-cargar todo
         BuildJLSums();       // 1 query: todos los Job Ledger Entries
@@ -147,26 +159,33 @@ page 50106 "ConsumidoObra"
                 Rec.VariantDesc := GetVariantDescFromDict(decompLine."No.", decompLine."Variant Code");
 
                 // qtyGastado - Dictionary lookup O(1), sin query
-                Rec.qtyGastado := GetJLQty(decompLine."No.", decompLine."Works No.", decompLine."Task No.");
+                Rec.qtyGastado := GetJLQty(decompLine."No.", decompLine."Variant Code", decompLine."Works No.", decompLine."Task No.");
                 Rec.cantidadDisponible := decompLine."Quantity" - Rec.qtyGastado;
                 Rec.estadoConsumo := GetestadoConsumo(decompLine."Performance", Rec.qtyGastado);
                 Rec.EsConsumido := Rec.qtyGastado > 0;
 
                 // Registrar clave para el check de Extras (sin query)
-                tmpKey := decompLine."No." + '|' + decompLine."Works No." + '|' + Format(decompLine."Task No.");
+                tmpKey := JLKey(decompLine."No.", decompLine."Variant Code", decompLine."Works No.", decompLine."Task No.");
                 if not PresupKeys.ContainsKey(tmpKey) then
                     PresupKeys.Add(tmpKey, true);
 
                 Rec.Insert();
             until decompLine.Next() = 0;
 
-        // Extras: JL sin linea presupuestada - Dictionary check, sin query a decompLine
+        // Extras: consumo sin linea presupuestada. UNA fila por
+        // (item|variante|almacen|actividad) con la cantidad NETA. Antes se
+        // insertaba una fila por movimiento con su cantidad bruta, asi que una
+        // devolucion parcial no bajaba el disponible y la siguiente fallaba.
         jl.Reset();
         jl.SetFilter(Quantity, '>%1', 0);
         if jl.FindSet() then
             repeat
-                tmpKey := jl."No." + '|' + jl."Location Code" + '|' + jl."Job Task No.";
-                if not PresupKeys.ContainsKey(tmpKey) then begin
+                tmpKey := JLKey(jl."No.", jl."Variant Code", jl."Location Code", jl."Job Task No.");
+                tmpNeto := GetJLQty(jl."No.", jl."Variant Code", jl."Location Code", jl."Job Task No.");
+                if (not PresupKeys.ContainsKey(tmpKey)) and (not ExtraKeys.ContainsKey(tmpKey))
+                   and (tmpNeto > 0)
+                then begin
+                    ExtraKeys.Add(tmpKey, true);
                     Rec.Init();
                     Rec.SystemId := CreateGuid();
                     Rec.category := 'Extra';
@@ -182,10 +201,10 @@ page 50106 "ConsumidoObra"
                     Rec."Variant Code" := jl."Variant Code";
                     Rec.parentTaskTemp := '';
                     Rec.VariantDesc := '';
-                    Rec.qtyGastado := jl.Quantity;
-                    Rec.cantidadDisponible := -jl.Quantity;
-                    Rec.estadoConsumo := GetestadoConsumo(0, jl.Quantity);
-                    Rec.EsConsumido := Rec.qtyGastado > 0;
+                    Rec.qtyGastado := tmpNeto;
+                    Rec.cantidadDisponible := -tmpNeto;
+                    Rec.estadoConsumo := GetestadoConsumo(0, tmpNeto);
+                    Rec.EsConsumido := true;
                     Rec.Insert();
                 end;
             until jl.Next() = 0;

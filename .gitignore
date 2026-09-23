@@ -40,3 +40,6 @@ node_modules/
 *.cer
 *.key
 *.lock.json
+
+# Python
+__pycache__/
