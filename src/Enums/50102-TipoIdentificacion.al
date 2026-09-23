@@ -1,10 +1,13 @@
 // ════════════════════════════════════════════════════════════════════════════════
 // Enum 50102 "GJW Tipo Identificacion"
-// Cómo se identifica un proveedor ante Hacienda: como persona física (cédula de
-// identidad) o como persona jurídica (cédula jurídica). El valor 0 (en blanco)
-// significa "sin definir": es el que quedan arrastrando los proveedores que ya
-// existían antes de este campo, y es justo lo que la ficha no deja guardar en uno
-// nuevo.
+// Cómo se identifica un proveedor ante Hacienda. La lista es la MISMA que la del
+// campo "Tipo de identificación" de la localización de Costa Rica (LLB VAT
+// registration Type, 70830810) y en el mismo orden, porque los dos campos guardan
+// el mismo dato y se copian entre sí (codeunit 50259).
+//
+// La diferencia: aquí sí hay un valor en blanco. El de LLB arranca en "Cédula
+// Física" para todo el mundo, así que con él no se puede saber a quién le falta el
+// dato; con este sí, y es lo que permite exigirlo al crear el proveedor.
 // ════════════════════════════════════════════════════════════════════════════════
 enum 50102 "GJW Tipo Identificacion"
 {
@@ -16,10 +19,26 @@ enum 50102 "GJW Tipo Identificacion"
     }
     value(1; "Fisica")
     {
-        Caption = 'Persona física';
+        Caption = 'Cédula Física';
     }
     value(2; "Juridica")
     {
-        Caption = 'Persona jurídica';
+        Caption = 'Cédula Jurídica';
+    }
+    value(3; "DIMEX")
+    {
+        Caption = 'Documento de Identificación de Migración y Extranjería - DIMEX';
+    }
+    value(4; "NITE")
+    {
+        Caption = 'NITE o Pasaporte Extranjero';
+    }
+    value(5; "Extranjero No Domiciliado")
+    {
+        Caption = 'Extranjero no domiciliado';
+    }
+    value(6; "No Contribuyente")
+    {
+        Caption = 'No contribuyente';
     }
 }
