@@ -128,7 +128,7 @@ def main():
     while time.time() < deadline:
         time.sleep(10)
         status, resp = http("GET",
-                            f"{croot}/extensionDeploymentStatus?$orderby=startedOn desc&$top=5", token)
+                            f"{croot}/extensionDeploymentStatus?$orderby=startedOn%20desc&$top=5", token)
         if status != 200:
             print(f"[{environment}] status HTTP {status}, reintento...")
             continue
@@ -145,7 +145,7 @@ def main():
     if final["status"] != "Completed":
         die(f"deployment FAILED en {environment}: revisar Extension Management > Deployment Status")
 
-    status, resp = http("GET", f"{croot}/extensions?$filter=displayName eq '{APP_NAME}'", token)
+    status, resp = http("GET", f"{croot}/extensions?$filter=displayName%20eq%20'{APP_NAME}'", token)
     if status == 200 and resp.get("value"):
         e = resp["value"][0]
         ver = f"{e['versionMajor']}.{e['versionMinor']}.{e['versionBuild']}.{e['versionRevision']}"
