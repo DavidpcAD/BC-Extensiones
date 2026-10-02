@@ -9,10 +9,19 @@ codeunit 50261 "Produccion Pendiente Guard"
     // registrar la obra genera el asiento del presupuesto entero con las
     // cantidades en cero (VC-F.12 línea 1.1: 725.399,30 = (1 - 0,8875) x 6.447.993,81).
     //
-    // Acá se fuerza la identidad sana —la misma que deja el OnValidate de
-    // Quantity— antes de que la fila se escriba. En una línea sana ya se cumple,
-    // así que no cambia nada; si Goom corrige el bug sigue sin cambiar nada y se
-    // puede retirar sin prisa.
+    // La base del cálculo es "Outstanding Quantity" (110), no (Quantity -
+    // "Registered Quantity"). Las dos dan lo mismo en las líneas de tipo Posting
+    // —Goom mantiene ahí la resta— pero NO en las de tipo Total: los capítulos
+    // llevan Quantity = 1 y "Unit Amount" = el total del capítulo, y Goom les deja
+    // a propósito las dos columnas de pendiente en cero porque no se registran.
+    // Calcular contra la resta les metería el capítulo entero como pendiente y
+    // duplicaría el presupuesto por el otro lado. Medido en Sandbox el 02/10/2026:
+    // la resta tocaba 285 de 2.732 líneas (284 de ellas capítulos, 5.330 millones
+    // de colones de más); el "Outstanding Quantity" toca 1, que es el bug real.
+    //
+    // Acá se fuerza esa identidad antes de que la fila se escriba. En una línea
+    // sana ya se cumple, así que no cambia nada; si Goom corrige el bug sigue sin
+    // cambiar nada y se puede retirar sin prisa.
 
     [EventSubscriber(ObjectType::Table, Database::"GomJob Works Production Line", 'OnBeforeInsertEvent', '', false, false)]
     local procedure CuadrarAlInsertar(var Rec: Record "GomJob Works Production Line"; RunTrigger: Boolean)
@@ -30,7 +39,7 @@ codeunit 50261 "Produccion Pendiente Guard"
     var
         Correcto: Decimal;
     begin
-        Correcto := (Linea.Quantity - Linea."Registered Quantity") * Linea."Unit Amount";
+        Correcto := Linea."Outstanding Quantity" * Linea."Unit Amount";
         if Linea."Outstanding Amount" <> Correcto then
             Linea."Outstanding Amount" := Correcto;
     end;
