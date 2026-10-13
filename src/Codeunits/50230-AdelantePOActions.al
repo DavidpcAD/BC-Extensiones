@@ -198,6 +198,23 @@ codeunit 50230 "Adelante PO Actions"
         exit(PurchHeader."GJW Realizado Por");
     end;
 
+    /// <summary>
+    /// Deja en el pedido QUIÉN lo creó desde la app (nombre del humano logueado, no la cuenta
+    /// de servicio). La app lo llama una vez, al crear la orden. Al registrar la factura/recepción,
+    /// el codeunit 50265 lo copia al documento registrado para que quede guardado.
+    /// Mismo criterio que SetRealizadoPor: procedure aparte para no romper firmas en Producción;
+    /// si se pierde, solo se pierde el nombre, no el documento. Devuelve el nombre ya guardado.
+    /// </summary>
+    procedure SetPedidoCreadoPor(orderNo: Code[20]; creadoPor: Text): Text
+    var
+        PurchHeader: Record "Purchase Header";
+    begin
+        GetOrder(PurchHeader, orderNo);
+        PurchHeader."GJW Pedido Creado Por" := CopyStr(creadoPor, 1, MaxStrLen(PurchHeader."GJW Pedido Creado Por"));
+        PurchHeader.Modify();
+        exit(PurchHeader."GJW Pedido Creado Por");
+    end;
+
     procedure PostInvoice(orderNo: Code[20]; vendorInvoiceNo: Code[35]; linesJson: Text; postingDate: Date): Text
     var
         PurchHeader: Record "Purchase Header";

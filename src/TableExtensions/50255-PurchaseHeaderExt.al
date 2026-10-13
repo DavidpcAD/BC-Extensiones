@@ -15,5 +15,15 @@ tableextension 50255 "GJW Purchase Header Ext" extends "Purchase Header"
             Caption = 'Realizado por';
             DataClassification = CustomerContent;
         }
+
+        // Quién CREÓ el pedido desde la app de proveeduría (OrdenCompra.creadoPor). Es distinto
+        // de "Realizado por" (quién REGISTRA la factura). Lo estampa AdelantePO_SetPedidoCreadoPor
+        // y, al registrar, el codeunit 50265 lo copia a la factura/recepción registrada para que
+        // quede guardado aunque el pedido se borre al facturarse por completo.
+        field(50111; "GJW Pedido Creado Por"; Text[50])
+        {
+            Caption = 'Pedido creado por';
+            DataClassification = CustomerContent;
+        }
     }
 }
