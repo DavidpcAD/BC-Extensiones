@@ -27,6 +27,7 @@ codeunit 50186 "GJW Material Consumption"
         GuidTxt: Text;
         NewLedgerEntryNo: Integer;
         NewJobEntryNo: Integer;
+        TaskDisplay: Text;
     begin
         // Validar parámetros
         if ItemLedgerEntryNos = '' then
@@ -184,6 +185,19 @@ codeunit 50186 "GJW Material Consumption"
 
         if ProcessedCount = 0 then
             Error('No se procesó ningún material');
+
+        // El material entró al almacén de obra (existe el GomJob Warehouse Quantity), pero todas
+        // las filas que coincidían tenían Quantity <= 0, así que el repeat no creó ninguna línea
+        // ni posteó ningún Job Ledger Entry. Antes esto devolvía [] con success:true (consumo
+        // "fantasma"); ahora falla con un mensaje claro para que la app no lo dé por registrado.
+        if TasksProcessed = 0 then begin
+            if JobTaskNo <> '' then
+                TaskDisplay := StrSubstNo('la tarea %1', JobTaskNo)
+            else
+                TaskDisplay := 'ninguna tarea del proyecto';
+            Error('No se posteó ningún consumo para el documento %1 (0 Job Ledger Entries). Los materiales no tienen cantidad asignada a %2 del proyecto %3, o esa cantidad ya fue consumida.',
+                DocNo, TaskDisplay, JobNo);
+        end;
 
         // Devolver solo jsonResults como arreglo (texto JSON) para Power Apps
         exit(Format(Arr));
