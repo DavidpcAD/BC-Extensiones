@@ -1,24 +1,24 @@
-// Columnas en la lista de Facturas de compra registradas para ver de un vistazo quién creó
-// el pedido y quién registró la factura. Vienen ocultas: se agregan con Personalizar.
+// Columnas en la lista de Facturas de compra registradas: quién recibió/registró la factura
+// y quién creó el pedido. Visibles, junto al proveedor.
 pageextension 50268 "GJW Posted Purch Inv List Ext" extends "Posted Purchase Invoices"
 {
     layout
     {
-        addlast(Control1)
+        addafter("Buy-from Vendor Name")
         {
-            field("GJW Pedido Creado Por"; Rec."GJW Pedido Creado Por")
+            field(RecibidoPor; Rec."GJW Realizado Por")
+            {
+                ApplicationArea = All;
+                Caption = 'Recibido por';
+                Visible = true;
+                ToolTip = 'Persona que registró/recibió la factura desde la app.';
+            }
+            field(PedidoCreadoPor; Rec."GJW Pedido Creado Por")
             {
                 ApplicationArea = All;
                 Caption = 'Pedido creado por';
-                Visible = false;
+                Visible = true;
                 ToolTip = 'Persona que creó el pedido desde la app de proveeduría.';
-            }
-            field("GJW Realizado Por"; Rec."GJW Realizado Por")
-            {
-                ApplicationArea = All;
-                Caption = 'Factura registrada por';
-                Visible = false;
-                ToolTip = 'Persona que registró la factura desde la app de proveeduría.';
             }
         }
     }

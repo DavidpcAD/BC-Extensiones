@@ -471,7 +471,8 @@ codeunit 50220 "GJW Material Op Orchestrator"
     var
         ConsumptionCU: Codeunit "GJW Material Consumption";
     begin
-        ResultTxt := ConsumptionCU.ConsumeWarehouseMaterials(Op."Last BC Entry Nos", JobNo, JobTaskNo, Op."Document No.", Op."GJW Realizado Por");
+        // 0D: el consumo final del orquestador no maneja fecha propia; el codeunit cae a hoy.
+        ResultTxt := ConsumptionCU.ConsumeWarehouseMaterials(Op."Last BC Entry Nos", JobNo, JobTaskNo, Op."Document No.", Op."GJW Realizado Por", 0D);
     end;
 
     local procedure ParseDestinationEntryNos(JsonResults: Text): Text

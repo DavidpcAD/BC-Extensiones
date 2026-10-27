@@ -1,6 +1,6 @@
 codeunit 50186 "GJW Material Consumption"
 {
-    procedure ConsumeWarehouseMaterials(ItemLedgerEntryNos: Text; JobNo: Code[20]; JobTaskNo: Code[20]; DocumentNo: Code[20]; RealizadoPor: Text[50]): Text
+    procedure ConsumeWarehouseMaterials(ItemLedgerEntryNos: Text; JobNo: Code[20]; JobTaskNo: Code[20]; DocumentNo: Code[20]; RealizadoPor: Text[50]; PostingDate: Date): Text
     var
         ItemLedgerEntry: Record "Item Ledger Entry";
         Item: Record Item;
@@ -38,6 +38,11 @@ codeunit 50186 "GJW Material Consumption"
 
         // Document No: usar el recibido como parámetro
         DocNo := DocumentNo;
+
+        // Fecha de registro: usar la fecha de la boleta si llega; si viene vacía (0D),
+        // caer a hoy para conservar el comportamiento anterior y nunca postear en 0D.
+        if PostingDate = 0D then
+            PostingDate := Today();
 
         // Separar la lista de Entry Nos
         EntryNoList := ItemLedgerEntryNos.Split(',');
@@ -89,7 +94,7 @@ codeunit 50186 "GJW Material Consumption"
                                 JobJnlLine."Journal Batch Name" := 'DEFAULT';
                                 JobJnlLine."Line No." := LineNo;
                                 JobJnlLine."Entry Type" := JobJnlLine."Entry Type"::Usage;
-                                JobJnlLine.Validate("Posting Date", Today);
+                                JobJnlLine.Validate("Posting Date", PostingDate);
 
                                 // 🔥 Document No único para rastrear EXACTO este consumo
                                 JobJnlLine."Document No." := DocNo;

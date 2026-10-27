@@ -1792,30 +1792,56 @@ codeunit 50230 "Adelante PO Actions"
     /// (era el error que la PWA parchaba con ReopenOrder + reintento). Por eso:
     ///  · Si la fecha no cambió, NO se revalida: se conserva el factor de cambio que ya
     ///    tiene el pedido (no se re-cotiza en silencio) y el pedido sigue Lanzado.
-    ///  · Si cambió y el pedido está Lanzado con divisa, se reabre primero (Reopen) y se
-    ///    valida ya en Abierto; Purch.-Post lo vuelve a lanzar solo al registrar. Es el
-    ///    mismo ciclo que hacía la PWA desde el cliente, ahora en una sola llamada.
+    ///  · Si cambió y el pedido está Lanzado con divisa, se reabre primero (Reopen), se
+    ///    valida la fecha ya en Abierto y SE VUELVE A LANZAR acá mismo. Antes quedaba
+    ///    Abierto dando por hecho que "Purch.-Post lo relanza al registrar": NO lo hace. Al
+    ///    registrar, Purch.-Post corre su release interno (codeunit 90 -> ReleasePurchDocument
+    ///    -> codeunit 415.Code) con CheckPurchaseReleaseRestrictions ACTIVO, que solo llama a
+    ///    Approvals Mgmt. "PrePostApprovalCheckPurch": con el documento Abierto y un workflow
+    ///    aplicable (MS-POAPW por la dimensión CC VN/VB) IsPurchaseHeaderPendingApproval = true
+    ///    y tiraba "Purchase Order X must be approved and released before you can perform this
+    ///    action" (caso CP-005930, factura 8581 en USD). El relance usa
+    ///    SetSkipCheckReleaseRestrictions: salta ÚNICAMENTE ese chequeo de aprobación — NO crea
+    ///    ni aprueba ninguna solicitud, así que NO puentea la aprobación de Luis en la PWA; solo
+    ///    repone el estado Lanzado que el pedido YA tenía antes del Reopen mecánico por la fecha.
+    ///    Las validaciones de datos del release (proveedor, ubicación, UdM, obra, IVA) sí corren.
     ///  · En moneda local no se reabre: validar la fecha ahí no toca líneas y hoy funciona
-    ///    igual con el pedido Lanzado.
-    /// No hace Modify: el caller persiste junto con Receive/Invoice.
+    ///    igual con el pedido Lanzado (y por eso NO se relanza: nunca se reabrió).
+    /// Solo hace Modify en la rama de divisa (para persistir antes de relanzar); en el resto no
+    /// hace Modify y el caller persiste junto con Receive/Invoice.
     /// </summary>
     local procedure PrepararFechaRegistro(var PurchHeader: Record "Purchase Header"; postingDate: Date)
     var
         ReleasePurchDoc: Codeunit "Release Purchase Document";
+        reabiertoParaFecha: Boolean;
     begin
         if postingDate = 0D then
             postingDate := Today();
 
+        reabiertoParaFecha := false;
         if (PurchHeader."Posting Date" <> postingDate) and
            (PurchHeader."Currency Code" <> '') and
            (PurchHeader.Status <> PurchHeader.Status::Open)
-        then
+        then begin
             ReleasePurchDoc.PerformManualReopen(PurchHeader);
+            reabiertoParaFecha := true;
+        end;
 
         if PurchHeader."Posting Date" <> postingDate then
             PurchHeader.Validate("Posting Date", postingDate);
         if PurchHeader."Document Date" <> postingDate then
             PurchHeader.Validate("Document Date", postingDate);
+
+        // Relanzar SOLO si lo reabrimos nosotros para la fecha (reabiertoParaFecha): así un
+        // pedido que entró Abierto de por sí —no aprobado— NO se fuerza a Lanzado y el gate de
+        // aprobación de Purch.-Post sigue vivo. Se persiste primero (Modify) porque el release
+        // relee el encabezado desde la base y, sin guardar, perdería lo que el caller ya puso en
+        // memoria pero aún no persistió (p. ej. "Vendor Invoice No." en PostInvoice).
+        if reabiertoParaFecha then begin
+            PurchHeader.Modify(true);
+            ReleasePurchDoc.SetSkipCheckReleaseRestrictions();
+            ReleasePurchDoc.Run(PurchHeader);
+        end;
     end;
 
     local procedure GetOrder(var PurchHeader: Record "Purchase Header"; orderNo: Code[20])

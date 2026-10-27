@@ -53,6 +53,12 @@ page 50194 "GJW Material Consump Singleton"
                     Caption = 'Realizado por';
                     ToolTip = 'Usuario del login de la app que realiza el consumo (ej: jerson).';
                 }
+                field(postingDate; PostingDate)
+                {
+                    ApplicationArea = All;
+                    Caption = 'Posting Date';
+                    ToolTip = 'Fecha de registro del consumo (la fecha de la boleta de entrega). Enviar antes que executeConsumption. Si no llega, usa la fecha de hoy.';
+                }
                 field(executeConsumption; ExecuteConsumption)
                 {
                     ApplicationArea = All;
@@ -87,6 +93,7 @@ page 50194 "GJW Material Consump Singleton"
         JobTaskNo: Code[20];
         DocumentNo: Code[20];
         RealizadoPor: Text[50];
+        PostingDate: Date;
         ExecuteConsumption: Boolean;
         ResultMessage: Text;
         Success: Boolean;
@@ -139,6 +146,6 @@ page 50194 "GJW Material Consump Singleton"
     [TryFunction]
     local procedure TryConsumeWarehouseMaterials(var MaterialConsumption: Codeunit "GJW Material Consumption")
     begin
-        ResultMessage := MaterialConsumption.ConsumeWarehouseMaterials(ItemLedgerEntryNos, JobNo, JobTaskNo, DocumentNo, RealizadoPor);
+        ResultMessage := MaterialConsumption.ConsumeWarehouseMaterials(ItemLedgerEntryNos, JobNo, JobTaskNo, DocumentNo, RealizadoPor, PostingDate);
     end;
 }

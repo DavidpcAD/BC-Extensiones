@@ -16,9 +16,9 @@ pageextension 50267 "GJW Posted Purch Inv Page Ext" extends "Posted Purchase Inv
             field("GJW Realizado Por"; Rec."GJW Realizado Por")
             {
                 ApplicationArea = All;
-                Caption = 'Factura registrada por';
+                Caption = 'Recibido por';
                 Editable = false;
-                ToolTip = 'Persona que registró la factura desde la app de proveeduría.';
+                ToolTip = 'Persona que registró/recibió la factura desde la app de proveeduría.';
             }
         }
     }
