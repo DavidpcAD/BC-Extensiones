@@ -853,7 +853,7 @@ codeunit 50230 "Adelante PO Actions"
     ///   { "type":"Fixed Asset", "itemNo":"AF-0190", "locationCode":"ALM-GRAL",
     ///     "quantity":1, "directUnitCost":1570.8, "ccCode":"CC", "ccValue":"VB-5.01" },
     ///   { "type":"Charge", "itemChargeNo":"FLETE", "description":"FLETE / TRANSPORTE",
-    ///     "quantity":1, "directUnitCost":45000, "chargeMethod":"Amount" }
+    ///     "quantity":1, "directUnitCost":45000, "chargeMethod":"Amount", "ccCode":"CC", "ccValue":"VB-5.01" }
     /// ] }
     ///
     /// "locationCode" vale para CUALQUIER tipo de línea, no solo para el artículo: en
@@ -958,7 +958,7 @@ codeunit 50230 "Adelante PO Actions"
                     else
                         skippedCount += 1;
                 'CHARGE':
-                    if InsertChargeLine(orderNo, lastLineNo, JObj, idx, skippedMsg) then
+                    if InsertChargeLine(orderNo, lastLineNo, JObj, idx, skippedMsg, warnMsg) then
                         chargeCount += 1
                     else
                         skippedCount += 1;
@@ -1454,8 +1454,16 @@ codeunit 50230 "Adelante PO Actions"
             end;
     end;
 
-    /// <summary>Crea una línea de Cargo (Item Charge). Mismo patrón fiable que AddChargeLine.</summary>
-    local procedure InsertChargeLine(orderNo: Code[20]; lineNo: Integer; JObj: JsonObject; idx: Integer; var skippedMsg: Text): Boolean
+    /// <summary>
+    /// Crea una línea de Cargo (Item Charge). Mismo patrón fiable que AddChargeLine.
+    ///
+    /// Lleva CENTRO DE COSTO ("ccCode"/"ccValue") igual que las demás líneas. Antes se
+    /// ignoraba: la app lo mandaba y el cargo quedaba con la dimensión en blanco, y
+    /// Contabilidad tenía que ponérsela a mano en BC (CP-006235, impuestos de exterior
+    /// de una compra de HER). No lleva Job No.: BC no lo acepta en una línea de cargo
+    /// (VerifyLineTypeForJob), así que el CC es el único amarre del cargo a la obra.
+    /// </summary>
+    local procedure InsertChargeLine(orderNo: Code[20]; lineNo: Integer; JObj: JsonObject; idx: Integer; var skippedMsg: Text; var warnMsg: Text): Boolean
     var
         PurchLine: Record "Purchase Line";
         v: JsonToken;
@@ -1464,6 +1472,8 @@ codeunit 50230 "Adelante PO Actions"
         qty: Decimal;
         directUnitCost: Decimal;
         hasCost: Boolean;
+        ccCode: Code[20];
+        ccValue: Code[20];
     begin
         chargeNo := CopyStr(GetJsonText(JObj, 'itemChargeNo'), 1, MaxStrLen(chargeNo));
         if chargeNo = '' then
@@ -1477,6 +1487,8 @@ codeunit 50230 "Adelante PO Actions"
         hasCost := JObj.Get('directUnitCost', v);
         if hasCost then
             if v.AsValue().IsNull() then hasCost := false else directUnitCost := v.AsValue().AsDecimal();
+        ccCode := CopyStr(GetJsonText(JObj, 'ccCode'), 1, MaxStrLen(ccCode));
+        ccValue := CopyStr(GetJsonText(JObj, 'ccValue'), 1, MaxStrLen(ccValue));
 
         PurchLine.Init();
         PurchLine."Document Type" := PurchLine."Document Type"::Order;
@@ -1488,6 +1500,9 @@ codeunit 50230 "Adelante PO Actions"
         if description <> '' then
             PurchLine.Validate(Description, description);
         PurchLine.Validate(Quantity, qty);
+        // Igual que en las otras líneas: un CC que no existe o está bloqueado no tumba
+        // el pedido entero, se crea el cargo sin él y se avisa.
+        AplicarDimension(PurchLine, ccCode, ccValue, idx, chargeNo, warnMsg);
         if hasCost then
             PurchLine.Validate("Direct Unit Cost", directUnitCost);
         PurchLine.Modify(true);
