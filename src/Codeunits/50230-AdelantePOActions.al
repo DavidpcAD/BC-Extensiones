@@ -12,6 +12,8 @@
 //   - PostReceipt(...)               ->  Solo Recibir       (Modo 2: factura en revisión)
 //   - PostInvoiceOfReceived(...)     ->  Solo Facturar lo ya recibido (Modo 2: cierre)
 //   - SetRealizadoPor(orderNo, quien) ->  deja en el pedido QUIÉN registra (para "Realizado por")
+//   - SetTarjetaYDimension(...)       ->  Forma de pago (tarjeta TC *) + dimensión de encabezado
+//                                         propagada a las líneas, SIN registrar (compras Amazon)
 //
 // Llamada desde la app (OData V4 unbound action, S2S):
 //   POST .../ODataV4/AdelantePO_ReleaseOrder?company={companyId}
@@ -213,6 +215,76 @@ codeunit 50230 "Adelante PO Actions"
         PurchHeader."GJW Pedido Creado Por" := CopyStr(creadoPor, 1, MaxStrLen(PurchHeader."GJW Pedido Creado Por"));
         PurchHeader.Modify();
         exit(PurchHeader."GJW Pedido Creado Por");
+    end;
+
+    /// <summary>
+    /// Deja listo un pedido de compra de AMAZON (pagado con tarjeta) para registrar: le pone la
+    /// FORMA DE PAGO (la tarjeta TC * que escoge el usuario) y una DIMENSIÓN en el ENCABEZADO (el
+    /// usuario escoge AC/CC/TM y su valor, p. ej. TM = G-GASTOS TARJETAS), y PROPAGA esa dimensión
+    /// a las LÍNEAS igual que al editarla a mano y contestar "sí, actualizar líneas". La propagación
+    /// es necesaria: el posteo toma la dimensión de la LÍNEA, no la del encabezado, así que sin ella
+    /// la factura registrada no llevaría la dimensión. NO registra nada — el posteo lo sigue haciendo
+    /// la app con PostInvoiceOfReceived / PostReceipt.
+    ///
+    /// El pedido llega LANZADO. Para poder tocar estos campos se REABRE y, al terminar, se vuelve a
+    /// LANZAR con SetSkipCheckReleaseRestrictions (mismo criterio que PrepararFechaRegistro en
+    /// 1.2.21.0, caso CP-005930): eso salta ÚNICAMENTE el chequeo de restricción de release, NO crea
+    /// ni aprueba ninguna solicitud y NO re-dispara el workflow, así que NO toca la aprobación de la
+    /// PWA de Luis (en Amazon pendingApprovals es 0). Un pedido que entra Abierto de por sí NO se
+    /// fuerza a Lanzado (se deja como está), igual que el fix de la fecha.
+    ///
+    /// Todo-o-nada: cualquier fallo tira Error y la transacción del web service revierte todo.
+    /// Idempotente: llamarlo dos veces con los mismos datos no cambia nada la segunda vez.
+    ///
+    ///   POST .../ODataV4/AdelantePO_SetTarjetaYDimension?company={companyId}
+    ///   body: { "orderNo":"CP-006320", "paymentMethodCode":"TC LUIS RO",
+    ///           "dimCode":"TM", "dimValueCode":"G-GASTOS TARJETAS" }
+    ///   ->   { "value": "Released" }
+    /// </summary>
+    procedure SetTarjetaYDimension(orderNo: Code[20]; paymentMethodCode: Code[10]; dimCode: Code[20]; dimValueCode: Code[20]): Text
+    var
+        PurchHeader: Record "Purchase Header";
+        ReleasePurchDoc: Codeunit "Release Purchase Document";
+        reabierto: Boolean;
+        oldHeaderDimSetID: Integer;
+        newHeaderDimSetID: Integer;
+    begin
+        if paymentMethodCode = '' then
+            Error('Falta la forma de pago (tarjeta) a poner en el pedido %1.', orderNo);
+        if (dimCode = '') or (dimValueCode = '') then
+            Error('Falta la dimensión o el valor a poner en el encabezado del pedido %1.', orderNo);
+
+        GetOrder(PurchHeader, orderNo);
+
+        // El pedido llega Lanzado: se reabre para validar forma de pago y dimensiones sobre el
+        // documento Abierto, y se relanza al final. SOLO si lo reabrimos nosotros se relanza: un
+        // pedido que entra Abierto de por sí no se fuerza a Lanzado.
+        if PurchHeader.Status <> PurchHeader.Status::Open then begin
+            ReleasePurchDoc.PerformManualReopen(PurchHeader);
+            reabierto := true;
+        end;
+
+        // 1) Forma de pago (tarjeta). Validate contra la tabla Payment Method (289).
+        SetFormaDePagoEnPedido(PurchHeader, paymentMethodCode);
+
+        // 2) Dimensión del encabezado. Se guarda el dim-set anterior para propagar el delta a las
+        //    líneas con UpdateAllLineDim (lo mismo que hace BC al editarla a mano).
+        oldHeaderDimSetID := PurchHeader."Dimension Set ID";
+        SetDimensionEncabezado(PurchHeader, dimCode, dimValueCode);
+        newHeaderDimSetID := PurchHeader."Dimension Set ID";
+
+        PurchHeader.Modify(true);
+
+        if newHeaderDimSetID <> oldHeaderDimSetID then
+            PurchHeader.UpdateAllLineDim(newHeaderDimSetID, oldHeaderDimSetID);
+
+        // 3) Relanzar sin re-chequear restricciones de release (no toca la aprobación).
+        if reabierto then begin
+            ReleasePurchDoc.SetSkipCheckReleaseRestrictions();
+            ReleasePurchDoc.Run(PurchHeader);
+        end;
+
+        exit(StatusText(orderNo));
     end;
 
     procedure PostInvoice(orderNo: Code[20]; vendorInvoiceNo: Code[35]; linesJson: Text; postingDate: Date): Text
@@ -1330,6 +1402,55 @@ codeunit 50230 "Adelante PO Actions"
                 TempDimSetEntry."Dimension Value ID" := DimValueRec."Dimension Value ID";
                 TempDimSetEntry.Insert();
                 PurchLine.Validate("Dimension Set ID", DimMgt.GetDimensionSetID(TempDimSetEntry));
+            end;
+    end;
+
+    /// <summary>Pone la forma de pago (tarjeta) en el encabezado, validando contra la tabla
+    /// Payment Method (289). El pedido ya viene Abierto (lo reabrió el caller).</summary>
+    local procedure SetFormaDePagoEnPedido(var PurchHeader: Record "Purchase Header"; paymentMethodCode: Code[10])
+    var
+        PaymentMethod: Record "Payment Method";
+    begin
+        if not PaymentMethod.Get(paymentMethodCode) then
+            Error('La forma de pago ''%1'' no existe en BC (tabla Payment Method).', paymentMethodCode);
+        PurchHeader.Validate("Payment Method Code", paymentMethodCode);
+    end;
+
+    /// <summary>Pone/Reemplaza una dimensión en el conjunto de dimensiones del ENCABEZADO, dejando
+    /// intactas las demás. Mismo criterio que AplicarDimension (líneas): si la dimensión es uno de
+    /// los dos atajos globales se pone por su campo de atajo (BC sincroniza el conjunto y el atajo a
+    /// la vez); si no, se edita el Dimension Set del encabezado. La propagación a líneas la hace el
+    /// caller con UpdateAllLineDim.</summary>
+    local procedure SetDimensionEncabezado(var PurchHeader: Record "Purchase Header"; dimCode: Code[20]; dimValueCode: Code[20])
+    var
+        DimValueRec: Record "Dimension Value";
+        TempDimSetEntry: Record "Dimension Set Entry" temporary;
+        GLSetup: Record "General Ledger Setup";
+        DimMgt: Codeunit DimensionManagement;
+    begin
+        if not DimValueRec.Get(dimCode, dimValueCode) then
+            Error('El valor ''%1'' no existe en la dimensión ''%2''.', dimValueCode, dimCode);
+        if DimValueRec.Blocked then
+            Error('El valor ''%1'' de la dimensión ''%2'' está bloqueado.', dimValueCode, dimCode);
+
+        GLSetup.Get();
+        if dimCode = GLSetup."Shortcut Dimension 1 Code" then
+            PurchHeader.Validate("Shortcut Dimension 1 Code", dimValueCode)
+        else
+            if dimCode = GLSetup."Shortcut Dimension 2 Code" then
+                PurchHeader.Validate("Shortcut Dimension 2 Code", dimValueCode)
+            else begin
+                DimMgt.GetDimensionSet(TempDimSetEntry, PurchHeader."Dimension Set ID");
+                TempDimSetEntry.SetRange("Dimension Code", dimCode);
+                if TempDimSetEntry.FindFirst() then
+                    TempDimSetEntry.Delete();
+                TempDimSetEntry.Reset();
+                TempDimSetEntry.Init();
+                TempDimSetEntry."Dimension Code" := dimCode;
+                TempDimSetEntry."Dimension Value Code" := dimValueCode;
+                TempDimSetEntry."Dimension Value ID" := DimValueRec."Dimension Value ID";
+                TempDimSetEntry.Insert();
+                PurchHeader.Validate("Dimension Set ID", DimMgt.GetDimensionSetID(TempDimSetEntry));
             end;
     end;
 
