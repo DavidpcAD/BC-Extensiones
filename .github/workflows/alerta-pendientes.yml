@@ -1,0 +1,39 @@
+name: Vigía del importe pendiente
+
+# Avisa si alguna línea de producción tiene el importe pendiente descuadrado. El
+# report «Registrar» de Goom postea EL PENDIENTE, así que un descuadre acá se
+# convierte en un asiento contable de más (incidente de ~500 millones, 2026-10-01).
+#
+# El guard 50261 (AdelanteAPI 1.2.15.0) evita que se creen nuevos, pero solo actúa al
+# insertar o modificar: lo escrito antes sigue sucio y nadie se entera hasta que
+# alguien le da Registrar. Esto es el que se entera.
+
+on:
+  schedule:
+    - cron: "0 12 * * 1-5" # días hábiles, 6 a.m. Costa Rica
+  workflow_dispatch: {}
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Revisar Production y Sandbox
+        env:
+          BC_TENANT_ID: ${{ secrets.BC_TENANT_ID }}
+          BC_CLIENT_ID: ${{ secrets.BC_CLIENT_ID }}
+          BC_CLIENT_SECRET: ${{ secrets.BC_CLIENT_SECRET }}
+        run: |
+          # bc-deploy.py lee las credenciales de un .env.local; en el runner se arma
+          # desde los secrets del repo y se borra al terminar el job.
+          mkdir -p ~/Desktop/adelante/business-central/digitacion-web
+          cat > ~/Desktop/adelante/business-central/digitacion-web/.env.local <<EOF
+          BC_TENANT_ID=$BC_TENANT_ID
+          BC_CLIENT_ID=$BC_CLIENT_ID
+          BC_CLIENT_SECRET=$BC_CLIENT_SECRET
+          EOF
+          python3 scripts/alerta-pendientes.py Production
