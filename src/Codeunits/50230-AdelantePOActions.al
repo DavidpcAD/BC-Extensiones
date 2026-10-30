@@ -627,8 +627,32 @@ codeunit 50230 "Adelante PO Actions"
     /// el método dado (Amount por defecto) y registra la factura. Devuelve el N.º de factura.
     /// receiptLinesJson = [{"documentNo":"CR-000003","lineNo":10000}, ...].
     /// NOTA: es distinto del cargo del propio pedido (que asigna a líneas del mismo pedido).
+    /// El IVA del cargo es el que trae el Item Charge por defecto; para un cargo exento, la app
+    /// llama PostChargeOnReceiptsWithVat.
     /// </summary>
     procedure PostChargeOnReceipts(chargeVendorNo: Code[20]; itemChargeNo: Code[20]; chargeAmount: Decimal; vendorInvoiceNo: Code[35]; metodo: Text; receiptLinesJson: Text; postingDate: Date): Text
+    begin
+        exit(PostChargeOnReceiptsWithVat(chargeVendorNo, itemChargeNo, chargeAmount, vendorInvoiceNo, metodo, receiptLinesJson, postingDate, ''));
+    end;
+
+    /// <summary>
+    /// Igual que PostChargeOnReceipts, pero fija el VAT Prod. Posting Group de la línea de cargo
+    /// antes de registrar. Para la factura del transportista que viene EXENTA: sin esto BC le pone
+    /// el 13% del Item Charge y la factura queda más cara que el papel (EASYBOX, factura 82120 →
+    /// CFR-011984 por ₡15.905,88 cuando el papel es ₡14.076,00 exento). La app manda
+    /// "EXENTO-BIENES", el mismo grupo que usa el botón Exonerar.
+    /// vatProdPostingGroup vacío = igual que PostChargeOnReceipts (IVA por defecto).
+    ///
+    /// Va en un procedure aparte, y no como parámetro opcional del original, porque AL no tiene
+    /// parámetros opcionales y BC rechaza la llamada OData que omite uno ("Expected a parameter
+    /// with name ... but it wasn't provided", probado en Sandbox el 30/10/2026): agregarlo a la
+    /// firma de PostChargeOnReceipts rompía todo cargo no exento que la app ya manda.
+    ///
+    ///   POST .../ODataV4/AdelantePO_PostChargeOnReceiptsWithVat?company={companyId}
+    ///   body: { chargeVendorNo, itemChargeNo, chargeAmount, vendorInvoiceNo, metodo,
+    ///           receiptLinesJson, postingDate, "vatProdPostingGroup":"EXENTO-BIENES" }
+    /// </summary>
+    procedure PostChargeOnReceiptsWithVat(chargeVendorNo: Code[20]; itemChargeNo: Code[20]; chargeAmount: Decimal; vendorInvoiceNo: Code[35]; metodo: Text; receiptLinesJson: Text; postingDate: Date; vatProdPostingGroup: Text): Text
     var
         PurchHeader: Record "Purchase Header";
         ChargeLine: Record "Purchase Line";
@@ -684,6 +708,7 @@ codeunit 50230 "Adelante PO Actions"
         ChargeLine.Insert(true);
         ChargeLine.Validate(Type, ChargeLine.Type::"Charge (Item)");
         ChargeLine.Validate("No.", itemChargeNo);
+        AplicarGrupoIva(ChargeLine, vatProdPostingGroup);
         ChargeLine.Validate(Quantity, 1);
         ChargeLine.Validate("Direct Unit Cost", chargeAmount);
         ChargeLine.Modify(true);
@@ -789,6 +814,17 @@ codeunit 50230 "Adelante PO Actions"
     /// El reparto del cargo se hace solo al lanzar/registrar (AsignarCargosProducto).
     /// </summary>
     procedure AddChargeLine(orderNo: Code[20]; itemChargeNo: Code[20]; description: Text[100]; quantity: Decimal; directUnitCost: Decimal): Text
+    begin
+        exit(AddChargeLineWithVat(orderNo, itemChargeNo, description, quantity, directUnitCost, ''));
+    end;
+
+    /// <summary>
+    /// Igual que AddChargeLine, pero fija el VAT Prod. Posting Group de la línea de cargo (p. ej.
+    /// "EXENTO-BIENES" para un cargo sin IVA). Vacío = igual que AddChargeLine: una línea nueva
+    /// queda con el IVA por defecto del Item Charge y una existente conserva el que ya tenía.
+    /// Procedure aparte por lo mismo que PostChargeOnReceiptsWithVat.
+    /// </summary>
+    procedure AddChargeLineWithVat(orderNo: Code[20]; itemChargeNo: Code[20]; description: Text[100]; quantity: Decimal; directUnitCost: Decimal; vatProdPostingGroup: Text): Text
     var
         PurchHeader: Record "Purchase Header";
         PurchLine: Record "Purchase Line";
@@ -806,6 +842,7 @@ codeunit 50230 "Adelante PO Actions"
         PurchLine.SetRange(Type, PurchLine.Type::"Charge (Item)");
         PurchLine.SetRange("No.", itemChargeNo);
         if PurchLine.FindFirst() then begin
+            AplicarGrupoIva(PurchLine, vatProdPostingGroup);
             PurchLine.Validate(Quantity, quantity);
             PurchLine.Validate("Direct Unit Cost", directUnitCost);
             if description <> '' then
@@ -831,10 +868,34 @@ codeunit 50230 "Adelante PO Actions"
         PurchLine.Validate("No.", itemChargeNo);
         if description <> '' then
             PurchLine.Validate(Description, CopyStr(description, 1, MaxStrLen(PurchLine.Description)));
+        AplicarGrupoIva(PurchLine, vatProdPostingGroup);
         PurchLine.Validate(Quantity, quantity);
         PurchLine.Validate("Direct Unit Cost", directUnitCost);
         PurchLine.Modify(true);
         exit(Format(lastLineNo));
+    end;
+
+    /// <summary>
+    /// Fija el VAT Prod. Posting Group de una línea de cargo. Vacío = no toca nada. Va DESPUÉS de
+    /// validar "No." (que pone el grupo del Item Charge) y ANTES del costo, para que el Direct Unit
+    /// Cost que manda la app quede tal cual. La combinación con el VAT Bus. Posting Group del
+    /// proveedor tiene que existir en VAT Posting Setup (para EXENTO-BIENES, la misma a 0% que usa
+    /// el Exonerar); si no, se corta con un error que dice cuál falta, y no se registra nada.
+    /// </summary>
+    local procedure AplicarGrupoIva(var PurchLine: Record "Purchase Line"; vatProdPostingGroup: Text)
+    var
+        VATPostingSetup: Record "VAT Posting Setup";
+        grupo: Code[20];
+    begin
+        vatProdPostingGroup := DelChr(vatProdPostingGroup, '<>', ' ');
+        if vatProdPostingGroup = '' then
+            exit;
+        if StrLen(vatProdPostingGroup) > MaxStrLen(grupo) then
+            Error('El grupo de IVA "%1" no existe (es más largo que %2 caracteres).', vatProdPostingGroup, MaxStrLen(grupo));
+        grupo := CopyStr(vatProdPostingGroup, 1, MaxStrLen(grupo));
+        if not VATPostingSetup.Get(PurchLine."VAT Bus. Posting Group", grupo) then
+            Error('No existe la combinación de IVA "%1" × "%2" en Configuración registros IVA (VAT Posting Setup): créela antes de registrar este cargo.', PurchLine."VAT Bus. Posting Group", grupo);
+        PurchLine.Validate("VAT Prod. Posting Group", grupo);
     end;
 
     /// <summary>
