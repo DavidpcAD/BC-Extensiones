@@ -246,8 +246,6 @@ codeunit 50230 "Adelante PO Actions"
         PurchHeader: Record "Purchase Header";
         ReleasePurchDoc: Codeunit "Release Purchase Document";
         reabierto: Boolean;
-        oldHeaderDimSetID: Integer;
-        newHeaderDimSetID: Integer;
     begin
         if paymentMethodCode = '' then
             Error('Falta la forma de pago (tarjeta) a poner en el pedido %1.', orderNo);
@@ -264,19 +262,8 @@ codeunit 50230 "Adelante PO Actions"
             reabierto := true;
         end;
 
-        // 1) Forma de pago (tarjeta). Validate contra la tabla Payment Method (289).
-        SetFormaDePagoEnPedido(PurchHeader, paymentMethodCode);
-
-        // 2) Dimensión del encabezado. Se guarda el dim-set anterior para propagar el delta a las
-        //    líneas con UpdateAllLineDim (lo mismo que hace BC al editarla a mano).
-        oldHeaderDimSetID := PurchHeader."Dimension Set ID";
-        SetDimensionEncabezado(PurchHeader, dimCode, dimValueCode);
-        newHeaderDimSetID := PurchHeader."Dimension Set ID";
-
-        PurchHeader.Modify(true);
-
-        if newHeaderDimSetID <> oldHeaderDimSetID then
-            PurchHeader.UpdateAllLineDim(newHeaderDimSetID, oldHeaderDimSetID);
+        // 1) Forma de pago (tarjeta) y 2) dimensión del encabezado, propagada a las líneas.
+        AplicarTarjetaYDimension(PurchHeader, paymentMethodCode, dimCode, dimValueCode);
 
         // 3) Relanzar sin re-chequear restricciones de release (no toca la aprobación).
         if reabierto then begin
@@ -653,6 +640,29 @@ codeunit 50230 "Adelante PO Actions"
     ///           receiptLinesJson, postingDate, "vatProdPostingGroup":"EXENTO-BIENES" }
     /// </summary>
     procedure PostChargeOnReceiptsWithVat(chargeVendorNo: Code[20]; itemChargeNo: Code[20]; chargeAmount: Decimal; vendorInvoiceNo: Code[35]; metodo: Text; receiptLinesJson: Text; postingDate: Date; vatProdPostingGroup: Text): Text
+    begin
+        exit(PostChargeOnReceiptsWithTarjeta(chargeVendorNo, itemChargeNo, chargeAmount, vendorInvoiceNo, metodo, receiptLinesJson, postingDate, vatProdPostingGroup, '', '', ''));
+    end;
+
+    /// <summary>
+    /// Igual que PostChargeOnReceiptsWithVat, pero además deja el pedido del cargo PAGADO CON
+    /// TARJETA antes de registrar: forma de pago (TC *) + dimensión del encabezado propagada a la
+    /// línea, igual que SetTarjetaYDimension en las órdenes de Amazon. Para los fletes de terceros
+    /// (EasyBox, DHL, UPS) que se pagan con tarjeta con el mismo TM / Gasto de Tarjeta. Combina con
+    /// el exento: un flete de EasyBox puede ser exento Y con tarjeta.
+    ///
+    /// Todos los parámetros son requeridos por OData; la app manda "" en los que no apliquen:
+    ///  · vatProdPostingGroup = ''                          → IVA por defecto del Item Charge.
+    ///  · paymentMethodCode, dimCode y dimValueCode = ''    → sin tarjeta (como WithVat).
+    ///  · Tarjeta a medias (p. ej. forma de pago sin dimensión) → Error: no se registra un cargo
+    ///    con tarjeta pero sin el TM, que es justo lo que Contabilidad corrige a mano.
+    ///
+    ///   POST .../ODataV4/AdelantePO_PostChargeOnReceiptsWithTarjeta?company={companyId}
+    ///   body: { chargeVendorNo, itemChargeNo, chargeAmount, vendorInvoiceNo, metodo,
+    ///           receiptLinesJson, postingDate, "vatProdPostingGroup":"EXENTO-BIENES",
+    ///           "paymentMethodCode":"TC LUIS RO", "dimCode":"TM", "dimValueCode":"G-GASTOS TARJETAS" }
+    /// </summary>
+    procedure PostChargeOnReceiptsWithTarjeta(chargeVendorNo: Code[20]; itemChargeNo: Code[20]; chargeAmount: Decimal; vendorInvoiceNo: Code[35]; metodo: Text; receiptLinesJson: Text; postingDate: Date; vatProdPostingGroup: Text; paymentMethodCode: Code[10]; dimCode: Code[20]; dimValueCode: Code[20]): Text
     var
         PurchHeader: Record "Purchase Header";
         ChargeLine: Record "Purchase Line";
@@ -675,7 +685,15 @@ codeunit 50230 "Adelante PO Actions"
         qtyToAssign: Decimal;
         asignadoAcum: Decimal;
         postedNo: Code[20];
+        conTarjeta: Boolean;
     begin
+        conTarjeta := (paymentMethodCode <> '') or (dimCode <> '') or (dimValueCode <> '');
+        if conTarjeta then begin
+            if paymentMethodCode = '' then
+                Error('Falta la forma de pago (tarjeta) del cargo: vino la dimensión %1 = %2 sin la tarjeta.', dimCode, dimValueCode);
+            if (dimCode = '') or (dimValueCode = '') then
+                Error('Falta la dimensión o el valor del encabezado para el cargo pagado con la tarjeta %1.', paymentMethodCode);
+        end;
         if chargeVendorNo = '' then
             Error('Falta el proveedor del cargo.');
         if itemChargeNo = '' then
@@ -712,6 +730,15 @@ codeunit 50230 "Adelante PO Actions"
         ChargeLine.Validate(Quantity, 1);
         ChargeLine.Validate("Direct Unit Cost", chargeAmount);
         ChargeLine.Modify(true);
+
+        // 2b) Pagado con tarjeta: forma de pago + dimensión del encabezado. Va DESPUÉS de crear la
+        //     línea para que la dimensión le llegue igual que en SetTarjetaYDimension (la del
+        //     encabezado gana sobre la que el Item Charge trae por defecto). El pedido es nuevo,
+        //     así que está Abierto: no hay que reabrir ni relanzar nada.
+        if conTarjeta then begin
+            PurchHeader.Get(PurchHeader."Document Type", PurchHeader."No.");
+            AplicarTarjetaYDimension(PurchHeader, paymentMethodCode, dimCode, dimValueCode);
+        end;
 
         // 3) Recolectar las líneas de recepción válidas y su "peso" según el método.
         metodoUp := UpperCase(metodo);
@@ -1464,6 +1491,27 @@ codeunit 50230 "Adelante PO Actions"
                 TempDimSetEntry.Insert();
                 PurchLine.Validate("Dimension Set ID", DimMgt.GetDimensionSetID(TempDimSetEntry));
             end;
+    end;
+
+    /// <summary>Forma de pago (tarjeta) + dimensión del encabezado, y propaga el delta de la
+    /// dimensión a las líneas con UpdateAllLineDim (lo mismo que hace BC al editarla a mano y
+    /// contestar "sí, actualizar líneas"). El pedido tiene que venir Abierto. Lo usan
+    /// SetTarjetaYDimension (órdenes de Amazon) y PostChargeOnReceiptsWithTarjeta (fletes).</summary>
+    local procedure AplicarTarjetaYDimension(var PurchHeader: Record "Purchase Header"; paymentMethodCode: Code[10]; dimCode: Code[20]; dimValueCode: Code[20])
+    var
+        oldHeaderDimSetID: Integer;
+        newHeaderDimSetID: Integer;
+    begin
+        SetFormaDePagoEnPedido(PurchHeader, paymentMethodCode);
+
+        oldHeaderDimSetID := PurchHeader."Dimension Set ID";
+        SetDimensionEncabezado(PurchHeader, dimCode, dimValueCode);
+        newHeaderDimSetID := PurchHeader."Dimension Set ID";
+
+        PurchHeader.Modify(true);
+
+        if newHeaderDimSetID <> oldHeaderDimSetID then
+            PurchHeader.UpdateAllLineDim(newHeaderDimSetID, oldHeaderDimSetID);
     end;
 
     /// <summary>Pone la forma de pago (tarjeta) en el encabezado, validando contra la tabla
