@@ -58,6 +58,13 @@ page 50114 "GJW Item Ledger Entry API"
                 {
                     Caption = 'ID Boleta Entrega';
                 }
+
+                // Personas (1.2.28.0): solo lectura; se escriben con personasMovimientoOperations.
+                field(origen; Rec."GJW Origen") { Caption = 'Origen'; Editable = false; }
+                field(encargado; Rec."GJW Encargado") { Caption = 'Encargado'; Editable = false; }
+                field(bodega; Rec."GJW Bodega") { Caption = 'Bodega'; Editable = false; }
+                field(transportista; Rec."GJW Transportista") { Caption = 'Transportista'; Editable = false; }
+                field(digitadoPor; Rec."GJW Digitado Por") { Caption = 'Digitado por'; Editable = false; }
             }
 
             // 🔸 Esta parte la eliminamos por ahora

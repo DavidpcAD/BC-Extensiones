@@ -66,6 +66,13 @@ codeunit 50208 "GJW Item Transfer Bulk FIFO"
             Obj := Token.AsObject();
             ReadTransferFields(Obj, ItemNo, LocationCode, NewLocationCode, Quantity, TaskNo, NewJobNo, NewJobTaskNo, Description, PostingDate, DocumentNo, VariantCode, SourceEntryNo);
 
+            // realizadoPor (opcional, 1.2.28.0): viaja en la Item Journal Line y el 50157 lo
+            // pasa al ILE como "Digitado por" cuando el registro viene de Digitación.
+            Clear(RealizadoPorTxt);
+            Clear(CurrRealizadoPor);
+            if TryGetText(Obj, 'realizadoPor', RealizadoPorTxt) then
+                CurrRealizadoPor := CopyStr(RealizadoPorTxt, 1, MaxStrLen(CurrRealizadoPor));
+
             if not ValidateTransfer(ItemNo, LocationCode, NewLocationCode, Quantity, SourceEntryNo, LineMessage) then begin
                 ErrorCount += 1;
                 ResultObj.Add('ok', false);
@@ -300,6 +307,7 @@ codeunit 50208 "GJW Item Transfer Bulk FIFO"
 
         ItemJnlLine.Validate(Quantity, Abs(Quantity));
         ItemJnlLine."Applies-from Entry" := SourceEntryNo;
+        ItemJnlLine."GJW Realizado Por" := CurrRealizadoPor;
 
         exit(ItemJnlLine.Insert(true));
     end;
@@ -395,4 +403,8 @@ codeunit 50208 "GJW Item Transfer Bulk FIFO"
 
         exit(Evaluate(ValueInteger, TextVal));
     end;
+
+    var
+        CurrRealizadoPor: Text[100];
+        RealizadoPorTxt: Text;
 }

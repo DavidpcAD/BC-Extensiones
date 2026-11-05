@@ -38,4 +38,14 @@ codeunit 50245 "GJW Realizado Por Handler"
         if PurchHeader."GJW Realizado Por" <> '' then
             JobJnlLine."GJW Realizado Por" := PurchHeader."GJW Realizado Por";
     end;
+
+    // Consumo al proyecto de un ítem (1.2.28.0): Job Jnl.-Post Line arma una Item Journal Line
+    // a partir de la Job Journal Line para crear el Mov. producto (ajuste negativo). Sin esto,
+    // el "Realizado por" llega al Mov. proyecto (pág. 92) pero no al Mov. producto (pág. 38).
+    // El 50157 lo pasa al ILE como "Digitado por" cuando el registro viene de Digitación.
+    [EventSubscriber(ObjectType::Table, Database::"Item Journal Line", 'OnAfterCopyItemJnlLineFromJobJnlLine', '', false, false)]
+    local procedure CopyRealizadoPorToItemJnlLine(var ItemJournalLine: Record "Item Journal Line"; JobJournalLine: Record "Job Journal Line")
+    begin
+        ItemJournalLine."GJW Realizado Por" := JobJournalLine."GJW Realizado Por";
+    end;
 }

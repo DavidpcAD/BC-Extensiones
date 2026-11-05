@@ -144,6 +144,12 @@ codeunit 50159 "GJW Item Transfer Bulk"
             if Obj.Get('appliesFromEntry', Val) and (not Val.AsValue().IsNull()) then
                 AppliesFromEntry := Val.AsValue().AsInteger();
 
+            // realizadoPor (opcional, 1.2.28.0): Digitación lo manda desde siempre y BC lo
+            // ignoraba. Viaja en la Item Journal Line y el 50157 lo pasa al ILE.
+            Clear(CurrRealizadoPor);
+            if Obj.Get('realizadoPor', Val) and (not Val.AsValue().IsNull()) then
+                CurrRealizadoPor := CopyStr(Val.AsValue().AsText(), 1, MaxStrLen(CurrRealizadoPor));
+
             // validaciones mínimas
             if ItemNo = '' then begin
                 ErrorCount += 1;
@@ -330,6 +336,8 @@ codeunit 50159 "GJW Item Transfer Bulk"
         // del almacén, pero los almacenes de obra creados desde la app nacen sin ellas, así
         // que completamos lo que falte con las del proyecto.
         SetTransferDimensions(ItemJnlLine, LocationCode, NewLocationCode, NewJobNo);
+
+        ItemJnlLine."GJW Realizado Por" := CurrRealizadoPor;
 
         exit(ItemJnlLine.Insert(true));
     end;
@@ -641,4 +649,7 @@ codeunit 50159 "GJW Item Transfer Bulk"
         ResultsArr.WriteTo(ResultText);
         exit(ResultText);
     end;
+
+    var
+        CurrRealizadoPor: Text[100];
 }

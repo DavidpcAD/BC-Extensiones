@@ -9,7 +9,16 @@ codeunit 50157 "GJW Item Journal Post Handler"
         // Persistir el destino en el propio ILE para evitar pérdida entre eventos.
         ItemLedgerEntry."GJW New Job No." := ItemJournalLine."New Job No.";
         ItemLedgerEntry."GJW New Job Task No." := ItemJournalLine."New Job Task No.";
+
+        // Personas (1.2.28.0): de qué app viene y, si es Digitación, quién lo digitó.
+        // Encargado/Bodega/Transportista de Boletas los estampa después el codeunit 50270.
+        ItemLedgerEntry."GJW Origen" := Personas.OrigenDeLaSesion(ItemLedgerEntry."Document No.");
+        if (ItemLedgerEntry."GJW Origen" = Personas.OrigenDigitacion()) and (ItemJournalLine."GJW Realizado Por" <> '') then
+            ItemLedgerEntry."GJW Digitado Por" := Personas.NombreDeUsuario(ItemJournalLine."GJW Realizado Por");
     end;
+
+    var
+        Personas: Codeunit "GJW Personas Movimiento";
 
     [EventSubscriber(ObjectType::Table, Database::"Item Ledger Entry", 'OnAfterInsertEvent', '', false, false)]
     local procedure CreateWarehouseQuantity(var Rec: Record "Item Ledger Entry"; RunTrigger: Boolean)

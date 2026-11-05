@@ -17,6 +17,14 @@ tableextension 50133 "GJW Item Journal Line Ext" extends "Item Journal Line"
             Caption = 'New Job Task No.';
             DataClassification = CustomerContent;
         }
+        // Usuario de la app que originó el movimiento (Digitación manda su username como
+        // realizadoPor). Lo llenan itemTransferBulks/FIFO (50159/50208) y, en un consumo al
+        // proyecto, el subscriber Job→Item del codeunit 50245. Lo lee el 50157 al crear el ILE.
+        field(50110; "GJW Realizado Por"; Text[100])
+        {
+            Caption = 'Realizado por';
+            DataClassification = CustomerContent;
+        }
     }
 
     trigger OnBeforeInsert()

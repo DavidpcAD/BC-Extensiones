@@ -45,6 +45,8 @@ permissionset 50100 "Adelante API RIMD"
         tabledata "Inventory Posting Setup" = RIMD,
         tabledata "G/L Account" = R,
         tabledata "Tenant Web Service" = RIMD,   // publicar AdelantePO/AdelanteObra desde la página 50241
+        tabledata "GJW Usuario App Nombre" = RIMD,   // usuario de app → nombre (Digitado por)
+        table "GJW Usuario App Nombre" = X,
 
 
 
@@ -71,6 +73,9 @@ permissionset 50100 "Adelante API RIMD"
         page "GJW Item Avail By Item Single" = X,
         page "GJW Item Stock Check API" = X,
         page "GJW Realizado Por Backfill API" = X,
+        page "GJW Personas Movimiento API" = X,
+        page "GJW Usuario App Nombre API" = X,
+        page "GJW Usuarios App Nombres" = X,
         page "GJW Item Avail Bulk Result API" = X,
         page "GJW Bulk Operations API" = X,
         page "GJW WorkLines Bulk Singleton" = X,
@@ -113,6 +118,7 @@ permissionset 50100 "Adelante API RIMD"
         codeunit "Adelante PO WS Setup" = X,
         codeunit "GJW Realizado Por Handler" = X,
         codeunit "GJW Realizado Por Backfill" = X,
+        codeunit "GJW Personas Movimiento" = X,
         codeunit "GomJob Job Management" = X;
 
 }
