@@ -70,6 +70,7 @@ permissionset 50100 "Adelante API RIMD"
         page "GJW Item Avail Bulk Single" = X,
         page "GJW Item Avail By Item Single" = X,
         page "GJW Item Stock Check API" = X,
+        page "GJW Realizado Por Backfill API" = X,
         page "GJW Item Avail Bulk Result API" = X,
         page "GJW Bulk Operations API" = X,
         page "GJW WorkLines Bulk Singleton" = X,
@@ -111,6 +112,7 @@ permissionset 50100 "Adelante API RIMD"
         codeunit "Adelante PO Actions" = X,
         codeunit "Adelante PO WS Setup" = X,
         codeunit "GJW Realizado Por Handler" = X,
+        codeunit "GJW Realizado Por Backfill" = X,
         codeunit "GomJob Job Management" = X;
 
 }

@@ -26,6 +26,9 @@ page 50110 "GJW Works API"
                 field(id; Rec.SystemId) { Caption = 'Id'; }
                 field(no; Rec."No.") { Caption = 'No.'; }
                 field(description; Rec.Description) { Caption = 'Description'; }
+                // "Descripción 2" de la obra: la app la edita (campo «Descripción» del editor de
+                // obras) y la tiene que poder escribir por PATCH, igual que la del proyecto.
+                field(description2; Rec."Description 2") { Caption = 'Description 2'; }
                 field(idEncargado; Rec."ID Encargado") { Caption = 'ID Encargado'; ObsoleteState = Pending; }
                 field(idEncargadoText; Rec."ID Encargado Text") { Caption = 'ID Encargado'; }
                 field(filterVersionCode; Rec."Filter Version Code") { Caption = 'Filter Version Code'; }

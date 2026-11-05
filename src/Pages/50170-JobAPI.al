@@ -24,6 +24,7 @@ page 50170 "GJW Job API"
                 field(id; Rec.SystemId) { Caption = 'Id'; }
                 field(no; Rec."No.") { Caption = 'No.'; }
                 field(description; Rec.Description) { Caption = 'Description'; }
+                field(description2; Rec."Description 2") { Caption = 'Description 2'; } // escribible (PATCH), ver page 50110
                 field(idEncargado; Rec."ID Encargado") { Caption = 'ID Encargado'; ObsoleteState = Pending; }
                 field(idEncargadoText; Rec."ID Encargado Text") { Caption = 'ID Encargado'; }
                 field(personResponsible; Rec."Person Responsible") { Caption = 'Person Responsible'; }

@@ -48,6 +48,7 @@ page 50172 "JobLedgerEntryAPI"
                 field(GenProdPostingGroup; Rec."Gen. Prod. Posting Group") { Caption = 'Gen. Prod. Posting Group'; }
                 field(DocumentDate; Rec."Document Date") { Caption = 'Document Date'; }
                 field(IDBoletaEntrega; Rec."ID Boleta Entrega") { Caption = 'ID Boleta Entrega'; }
+                field(RealizadoPor; Rec."GJW Realizado Por") { Caption = 'Realizado por'; Editable = false; }
                 field(JobTaskNo; Rec."Job Task No.") { Caption = 'Job Task No.'; }
                 field(LineAmountLCY; Rec."Line Amount (LCY)") { Caption = 'Line Amount (LCY)'; }
                 field(UnitCost; Rec."Unit Cost") { Caption = 'Unit Cost'; }
